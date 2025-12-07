@@ -2,102 +2,311 @@
 
 ## Project Overview
 
-This web application will serve as a digital "proofreading assistant" for election officials to verify ballots before printing. The system will use GPT-5 with Code Interpreter to analyze ballot images and candidate/race data to identify potential issues such as missing ovals and misspelled candidate names.
+This web application serves as a digital "proofreading assistant" for election officials to verify ballots before printing. The system uses OpenAI GPT-4o with vision to analyze ballot images and candidate/race data to identify potential issues such as missing ovals and misspelled candidate names.
 
 **Key Principle**: This tool serves as "one more set of eyes" in an already robust human verification process, not as a replacement for human oversight.
 
-## System Architecture
+## Current Implementation Status (December 2025)
 
-### Frontend (React/HTML)
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Ballot Verification UI                            │
-├─────────────┬─────────────┬─────────────────┬─────────────────────────────┤
-│ Text Area   │ Image       │ Analysis        │ Thinking Stream             │
-│             │ Upload      │ Results         │                             │
-│ Race/       │             │                 │ ┌─ Pass 1: Visual Analysis │
-│ Candidate   │ PNG         │ Human-Readable  │ │  • Cropping ballot...     │
-│ Data        │ Preview     │ Summary         │ │  • Checking candidate A   │
-│             │             │                 │ │  • Found missing oval!   │
-│ - Upload    │ [Upload     │ Missing Ovals:  │ └─ Pass 2: Content Valid. │
-│   Text File │  PNG]       │ • John Doe      │    • Comparing names...   │
-│ - Direct    │             │   (Confidence   │    • Spell check...       │
-│   Edit      │             │    95%)         │                           │
-│             │             │                 │ [Show/Hide Thinking]      │
-│             │             │ Misspellings:   │                           │
-│             │             │ • None found    │                           │
-└─────────────┴─────────────┴─────────────────┴─────────────────────────────┘
-                                   │
-                            [Submit for Analysis]
-```
+**✅ COMPLETED:**
+- Multi-agent analysis system with sequential processing
+- Missing ovals detection agent (Agent 1)
+- Spelling error detection agent (Agent 2) 
+- Frontend supporting both analysis types
+- Backend job management with progress tracking
+- Contest data parsing and validation
+- Image upload and processing
+- Comprehensive results display
 
-### Backend (Flask + Background Processing)
+**🔧 CURRENT ARCHITECTURE:**
+
+### Multi-Agent Analysis System
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   Flask Application                         │
+│              Multi-Agent Orchestrator                      │
 ├─────────────────────────────────────────────────────────────┤
-│  Routes:                                                    │
-│  • POST /upload-image     - Handle PNG upload              │
-│  • POST /upload-races     - Handle race/candidate text     │
-│  • POST /analyze-ballot   - Trigger async LLM analysis     │
-│  • GET  /analysis/{job_id}/status - Check processing       │
-│  • GET  /analysis/{job_id}/results - Get final results     │
-│  • GET  /analysis/{job_id}/thinking - Stream thinking      │
-├─────────────────────────────────────────────────────────────┤
-│  Background Worker (Threading/Celery):                     │
-│  • OpenAI API Manager     - Handle long-running requests   │
-│  • Job Status Tracker     - Update progress in real-time   │
-│  • Thinking Stream Parser - Extract intermediate steps     │
-│  • Results Formatter      - Convert JSON to human text     │
-├─────────────────────────────────────────────────────────────┤
-│  Services:                                                  │
-│  • Image Processing       - Validate/prepare PNG files     │
-│  • Text Processing        - Parse race/candidate data      │
-│  • Job Queue Manager      - Track analysis jobs            │
-│  • WebSocket Handler      - Real-time status updates       │
+│  analyze_ballot_with_openai()                              │
+│  ├─ Agent 1: analyze_ballot_for_missing_ovals()            │
+│  │  • Input: PNG image only                               │
+│  │  • Focus: Missing ovals, visual anomalies              │
+│  │  • Progress: 10% → 50%                                 │
+│  │                                                         │
+│  ├─ Agent 2: analyze_ballot_for_spelling()                 │
+│  │  • Input: PNG image + contest text data                │
+│  │  • Focus: Candidate name spelling errors               │
+│  │  • Progress: 50% → 90%                                 │
+│  │                                                         │
+│  └─ combine_agent_results()                                │
+│     • Merge findings from both agents                     │
+│     • Generate unified summary                             │
+│     • Progress: 90% → 100%                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### LLM Integration Strategy
+### Frontend (HTML/CSS/JavaScript)
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Multi-Agent Ballot Verification UI                    │
+├─────────────┬─────────────┬─────────────────────────────────────────────────┤
+│ Contest     │ Ballot      │ Analysis Results                                │
+│ Data Input  │ Image       │                                                 │
+│             │ Upload      │ 🔍 Multi-Agent Analysis Summary                │
+│ • Text area │             │ ├─ Agent 1: Missing ovals check               │
+│ • Validate  │ • PNG only  │ └─ Agent 2: Spelling check                    │
+│ • Live      │ • Preview   │                                                 │
+│   feedback  │ • Metadata  │ ⚠️  Missing Ovals (2)                         │
+│             │             │ ❌ Spelling Errors (1)                         │
+│             │             │ ℹ️  Other Issues (1)                           │
+│             │             │                                                 │
+│             │             │ 📋 Detailed Analysis (collapsible)             │
+│             │             │ ├─ === MISSING OVALS ANALYSIS ===             │
+│             │             │ └─ === SPELLING ANALYSIS ===                  │
+└─────────────┴─────────────┴─────────────────────────────────────────────────┘
+                                   │
+                          [Analyze Ballot] (Multi-Agent)
+```
+
+### Backend (Flask + Threading)
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Dual-Pass Analysis                       │
+│                Flask Application (app.py)                   │
 ├─────────────────────────────────────────────────────────────┤
-│  Pass 1: Visual Analysis                                    │
-│  • Focus: Missing ovals, formatting issues                 │
-│  • Input: PNG image only                                   │
-│  • Model: GPT-5 with Code Interpreter                      │
-│  • Output: Visual anomaly report                           │
+│  API Routes:                                                │
+│  • POST /api/upload-image     - Handle PNG upload          │
+│  • POST /api/upload-contests  - Handle contest text data   │
+│  • POST /api/validate-contests - Real-time validation      │
+│  • POST /api/analyze-ballot   - Trigger multi-agent flow   │
+│  • GET  /api/analysis/{id}/status - Progress tracking      │
+│  • GET  /api/analysis/{id}/results - Combined results      │
+│  • GET  /api/analysis/{id}/logs - OpenAI session logs      │
 ├─────────────────────────────────────────────────────────────┤
-│  Pass 2: Content Validation                                │
-│  • Focus: Candidate names, race completeness               │
-│  • Input: PNG image + race/candidate data                  │
-│  • Model: GPT-5 with Code Interpreter                      │
-│  • Output: Content validation report                       │
+│  Agent Functions:                                           │
+│  • analyze_ballot_for_missing_ovals()                      │
+│    - Specialized prompt for oval detection                 │
+│    - parse_missing_ovals_results()                         │
+│  • analyze_ballot_for_spelling()                           │
+│    - Compares image text vs. contest data                  │
+│    - parse_spelling_results()                              │
+│  • combine_agent_results()                                 │
+├─────────────────────────────────────────────────────────────┤
+│  Data Management:                                           │
+│  • In-memory job storage (analysis_jobs{})                 │
+│  • File uploads (uploaded_files{})                         │
+│  • Contest data linking to jobs                            │
+│  • Comprehensive OpenAI session logging                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Technical Stack
 
 ### Frontend
-- **Framework**: React with TypeScript
-- **Styling**: CSS Modules or Tailwind CSS
-- **State Management**: React hooks (useState, useReducer)
-- **File Handling**: Native HTML5 file input with drag-and-drop
-- **HTTP Client**: Fetch API or Axios
+- **Implementation**: Pure HTML/CSS/JavaScript (not React as originally planned)
+- **Styling**: Custom CSS with responsive grid layout
+- **State Management**: Global JavaScript variables and DOM manipulation
+- **File Handling**: HTML5 file input with drag-and-drop support
+- **HTTP Client**: Fetch API for all backend communication
+- **Features**: Real-time contest data validation, progress tracking, multi-agent result display
 
 ### Backend
-- **Framework**: Flask (Python)
-- **File Handling**: Werkzeug secure filename handling
-- **Image Processing**: Pillow for basic image validation
-- **API Integration**: OpenAI Python SDK
-- **Data Validation**: Pydantic for request/response models
-- **Error Handling**: Custom exception classes
-- **Logging**: Python logging module
+- **Framework**: Flask (Python) with threading for background processing
+- **File Handling**: Werkzeug secure filename handling with UUID generation
+- **Image Processing**: Pillow for validation and resizing
+- **API Integration**: OpenAI Python SDK (GPT-4o model)
+- **Data Storage**: In-memory dictionaries (analysis_jobs, uploaded_files)
+- **Logging**: Comprehensive OpenAI session logging to files
+- **Architecture**: Multi-agent system with specialized functions
 
 ### External Services
-- **LLM**: OpenAI GPT-5 with Code Interpreter enabled
-- **Storage**: Local filesystem for prototype (future: cloud storage)
+- **LLM**: OpenAI GPT-4o (not GPT-5 as originally planned)
+- **Storage**: Local filesystem for uploaded images and logs
+- **Development**: Local development servers (Flask dev server + Python http.server)
+
+## Current Data Models
+
+### Multi-Agent Results Structure
+```json
+{
+  "combined_analysis": {
+    "summary": "Found 2 missing ovals, 1 spelling error requiring attention before printing.",
+    "total_issues": 3,
+    "issues_by_type": {
+      "missing_ovals": [
+        {
+          "description": "Missing oval for John Doe in State Superintendent",
+          "candidate": "John Doe",
+          "contest": "State Superintendent", 
+          "confidence": "high",
+          "raw_text": "..."
+        }
+      ],
+      "spelling_errors": [
+        {
+          "description": "Candidate name misspelled: 'Jill Underly' appears as 'Jil Underly'",
+          "candidate": "Jill Underly",
+          "contest": "State Superintendent",
+          "confidence": "medium",
+          "raw_text": "..."
+        }
+      ],
+      "other_issues": []
+    },
+    "agent_summaries": {
+      "missing_ovals": "No issues detected. All candidates appear to have proper voting ovals.",
+      "spelling": "Found 1 spelling error that requires attention."
+    },
+    "confidence_summary": "Missing ovals: Analysis completed successfully. Spelling: 1 medium-confidence finding",
+    "completed_at": "2025-12-07T..."
+  },
+  "agent_results": {
+    "missing_ovals": {
+      "agent": "missing_ovals",
+      "raw_analysis": "I carefully examined the ballot...",
+      "findings": { ... },
+      "completed_at": "..."
+    },
+    "spelling": {
+      "agent": "spelling", 
+      "raw_analysis": "I compared the candidate names...",
+      "findings": { ... },
+      "completed_at": "..."
+    }
+  }
+}
+```
+
+### Contest Data Format
+**Input Format (Text)**:
+```
+State Superintendent
+  Brittany Kinser
+  Jill Underly
+  Reporting Units: All Reporting Units
+
+Justice of the Supreme Court
+  Brad Schimel
+  Susan Crawford
+  Reporting Units: All Reporting Units
+
+Maple Bluff Village Trustee (3)
+  Lilly Bickers
+  Scott A. Robinson
+  Jim Schuler
+  Laura Peck
+  Eric McLeod
+  Reporting Units: V Maple Bluff Wds 1-2
+```
+
+**Internal Processing Format (JSON)**:
+```json
+{
+  "contests": [
+    {
+      "title": "State Superintendent",
+      "candidates": ["Brittany Kinser", "Jill Underly"],
+      "reporting_units": "All Reporting Units",
+      "vote_for": 1
+    },
+    {
+      "title": "Maple Bluff Village Trustee",
+      "candidates": ["Lilly Bickers", "Scott A. Robinson", "Jim Schuler", "Laura Peck", "Eric McLeod"],
+      "reporting_units": "V Maple Bluff Wds 1-2", 
+      "vote_for": 3
+    }
+  ]
+}
+```
+
+## Development Insights & Next Session Context
+
+### Key Implementation Decisions Made
+1. **Agent Architecture**: Chose sequential execution over parallel for better debugging and progress tracking
+2. **Backward Compatibility**: Frontend handles both old single-agent and new multi-agent result structures
+3. **Prompt Separation**: Currently prompts are embedded in agent functions (needs refactoring)
+4. **Error Handling**: Each agent has individual error handling with comprehensive logging
+5. **Progress Tracking**: Real-time updates showing which agent is currently running
+
+### Known Issues for Next Session
+1. **False Positive Error Reporting**: 
+   - Backend/OpenAI reporting "Everything looks good" but UI flags as errors
+   - Need to improve result parsing to distinguish between "no issues found" and "analysis failed"
+   - Current parsing logic may be too aggressive in flagging text as problems
+
+2. **Prompt Management**: 
+   - Prompts are currently hardcoded in agent functions
+   - Need to externalize prompts to separate files/configuration
+   - Will improve prompt editing and testing workflow
+
+### Current Prompt Structures
+
+**Missing Ovals Prompt** (in `analyze_ballot_for_missing_ovals()`):
+- Focus: Visual analysis of ballot image only
+- Looking for: Missing ovals, visual anomalies
+- Output: Structured report with confidence levels
+
+**Spelling Prompt** (in `analyze_ballot_for_spelling()`):
+- Focus: Comparing image text against official contest data
+- Input: Both image and contest text data
+- Looking for: Spelling discrepancies, name mismatches
+- Output: Comparison report with specific candidate/contest references
+
+### Recommended Next Steps
+1. **Extract Prompts**: Move prompts to external files (JSON/YAML) for easier editing
+2. **Improve Result Parsing**: Fix false positive error detection when "no issues found"
+3. **Enhance Error Classification**: Better distinguish between analysis failures and successful "no issues" results
+4. **Prompt Optimization**: Refine prompts based on real-world testing results
+5. **Add Confidence Tuning**: Allow adjustment of confidence thresholds for different issue types
+
+## Development Workflow
+
+### Setup Instructions
+```bash
+# Backend setup
+cd ballot-llm-ui
+source .venv/bin/activate
+cd backend
+python app.py  # Runs on http://localhost:5000
+
+# Frontend setup (separate terminal)
+cd ballot-llm-ui/frontend  
+python3 -m http.server 8000  # Serves on http://localhost:8000
+```
+
+### File Structure
+```
+ballot-llm-ui/
+├── backend/
+│   ├── app.py                 # Main Flask application with all agents
+│   ├── requirements.txt       # Python dependencies
+│   ├── uploads/              # Uploaded ballot images
+│   └── openai-sessions/      # Detailed API call logs
+├── frontend/
+│   ├── index.html            # Complete frontend application
+│   └── test-results.html     # Testing/development page
+├── PROJECT.md               # This documentation
+├── README.md                # Basic project info
+└── .venv/                   # Python virtual environment
+```
+
+### Key Functions to Understand for Next Session
+- `analyze_ballot_with_openai()`: Main orchestrator function
+- `analyze_ballot_for_missing_ovals()`: Agent 1 implementation  
+- `analyze_ballot_for_spelling()`: Agent 2 implementation
+- `parse_missing_ovals_results()` / `parse_spelling_results()`: Result parsing logic
+- `combine_agent_results()`: Multi-agent result combination
+- `displayAnalysisResults()`: Frontend result rendering (JavaScript)
+
+### Debugging & Logging
+- **OpenAI Sessions**: All API calls logged to `backend/openai-sessions/{job_id}.log`
+- **Browser Console**: Frontend debugging and API response inspection
+- **Flask Debug Mode**: Enabled for development with auto-restart
+- **Job Status Tracking**: Real-time progress via `/api/analysis/{job_id}/status`
+
+### Testing Tips
+- Use test contest data from existing examples
+- Upload PNG ballot images (JPG not supported)
+- Monitor browser network tab for API calls
+- Check backend terminal for Python errors
+- Review OpenAI session logs for detailed prompt/response analysis
 
 ## Data Models
 
@@ -146,249 +355,21 @@ The backend converts text to structured data for LLM processing:
 }
 ```
 
-### Analysis Response Format
-```json
-{
-  "analysis_id": "uuid",
-  "timestamp": "2024-12-05T10:30:00Z",
-  "status": "completed",
-  "human_readable_summary": "Found 2 issues on this ballot:\n\n**Missing Ovals (1 issue):**\n• John Doe in State Superintendent race is missing his oval (95% confidence)\n\n**Name Misspellings (1 issue):**\n• 'Jon Doe' should be 'John Doe' in State Superintendent race (92% confidence)\n\n**All Expected Races Present:** ✓\n**All Expected Candidates Present:** ✓",
-  "thinking_stream": [
-    {
-      "timestamp": "2024-12-05T10:30:15Z",
-      "step": "cropping_ballot",
-      "description": "Extracting left column for analysis...",
-      "image_url": "data:image/png;base64,..."
-    },
-    {
-      "timestamp": "2024-12-05T10:30:22Z",
-      "step": "checking_ovals",
-      "description": "Scanning for ovals next to candidate names..."
-    }
-  ],
-  "detailed_results": {
-    "missing_ovals": [
-      {
-        "race": "State Superintendent",
-        "candidate": "John Doe",
-        "confidence": 0.95,
-        "location": "left_column_top"
-      }
-    ],
-    "misspelled_names": [
-      {
-        "found": "Jon Doe",
-        "expected": "John Doe",
-        "race": "State Superintendent",
-        "confidence": 0.92
-      }
-    ]
-  }
-}
-```
+## Current Status Summary
 
-## LLM Prompt Strategy
+**✅ WORKING SYSTEM**: The multi-agent ballot verification tool is fully functional with:
+- Two specialized agents (missing ovals + spelling errors) 
+- Complete frontend with multi-agent result display
+- Background job processing with real-time progress tracking
+- Comprehensive OpenAI session logging
+- Contest data parsing and validation
 
-### Pass 1: Visual Analysis Prompt
-```
-You are proofing a draft ballot before it goes to the printer. I need you to check specifically for missing ovals (selection bubbles) next to candidate names and referendum options.
+**🔧 NEXT PRIORITIES**:
+1. **Prompt Externalization**: Move hardcoded prompts to external configuration files
+2. **False Positive Fix**: Improve result parsing to distinguish "no issues found" from "analysis failed"  
+3. **Prompt Optimization**: Refine prompts based on testing results
 
-The ballot layout:
-- Three columns, read top to bottom then left to right
-- Each contest starts with the race name and voting instructions ("Vote for 1", "Vote for 3", etc.)
-- Each candidate should have an oval in front of their name
-- Referendum questions have "Yes" and "No" options, each with an oval
-- Sometimes the ballot software drops ovals during generation
-
-Use your Code Interpreter to:
-- Systematically examine each column
-- Crop sections to focus on individual contests
-- Count candidates vs ovals in each race
-- Zoom in on areas where ovals might be missing
-
-Report ONLY missing ovals with:
-- Race name
-- Candidate/option name
-- Confidence level
-- Location description
-
-Ignore minor formatting issues, alignment problems, or text quality - focus solely on missing selection ovals.
-```
-
-### Pass 2: Content Validation Prompt
-```
-You are proofing a draft ballot before it goes to the printer. Compare this ballot image against the expected contest and candidate data.
-
-Expected Contests and Candidates:
-{text_race_data}
-
-Validation tasks:
-1. Verify all expected races appear on the ballot
-2. Check that all expected candidates are listed in each race
-3. Validate candidate name spelling (look for common typos)
-4. Confirm vote instructions match expected numbers (e.g., "Vote for 3" for Maple Bluff trustees)
-
-Use your Code Interpreter to:
-- Extract all text from the ballot systematically
-- Parse contest names and candidate lists
-- Compare extracted names against expected data using fuzzy string matching
-- Calculate confidence scores for potential misspellings
-
-Report:
-- Missing races or candidates
-- Misspelled names with suggested corrections
-- Vote instruction mismatches
-- Confidence levels for each finding
-
-Focus on accuracy - missing content or name misspellings are critical to capture.
-```
-
-## API Endpoints
-
-### Core Endpoints
-1. **POST /api/upload-image**
-   - Upload PNG ballot image
-   - Validate file type and size
-   - Return upload confirmation and file ID
-
-2. **POST /api/upload-contests**
-   - Upload/submit contest and candidate text data
-   - Parse and validate text format
-   - Return validation status and parsed structure
-
-3. **POST /api/analyze-ballot**
-   - Trigger dual-pass LLM analysis
-   - Return analysis job ID immediately
-   - Start background processing
-
-4. **GET /api/analysis/{job_id}/status**
-   - Check analysis job status (queued/running/completed/failed)
-   - Return current progress and estimated completion
-
-5. **GET /api/analysis/{job_id}/thinking**
-   - Server-sent events endpoint for real-time thinking stream
-   - Returns intermediate analysis steps as they happen
-   - Includes cropped images and reasoning steps
-
-6. **GET /api/analysis/{job_id}/results**
-   - Retrieve final analysis results
-   - Returns human-readable summary and detailed findings
-
-### Utility Endpoints
-5. **GET /api/health**
-   - System health check
-
-6. **POST /api/validate-data**
-   - Validate race/candidate data format without analysis
-
-## User Interface Components
-
-### Left Panel: Contest/Candidate Data
-- **Text File Upload Button**: Import .txt file with contest data
-- **Text Area**: Direct editing with format highlighting
-- **Format Helper**: Show/hide expected format example
-- **Parse Preview**: Show how text will be interpreted
-
-### Center-Left Panel: Ballot Image
-- **Drag-and-Drop Zone**: PNG file upload
-- **Image Preview**: Zoomable ballot display
-- **File Info**: Name, size, dimensions
-- **Clear Button**: Remove uploaded image
-
-### Center-Right Panel: Analysis Results
-- **Status Indicator**: Loading, analyzing, complete states
-- **Human-Readable Summary**: Plain English results
-- **Issue Details**: Expandable findings with confidence scores
-- **Progress Bar**: Show analysis completion percentage
-
-### Right Panel: Thinking Stream (Collapsible)
-- **Real-Time Log**: LLM's analysis steps as they happen
-- **Image Previews**: Show cropped ballot sections being analyzed
-- **Reasoning Steps**: Display model's thought process
-- **Toggle Visibility**: Show/hide thinking stream panel
-
-### Bottom Panel: Actions
-- **Analyze Button**: Start ballot verification
-- **Reset Button**: Clear all inputs and results
-- **Save Session**: Preserve current state (future enhancement)
-
-## Development Phases
-
-### Phase 1: Core Infrastructure (Week 1-2)
-- [ ] Set up Flask backend with basic routing
-- [ ] Create React frontend with component structure
-- [ ] Implement file upload functionality
-- [ ] Basic OpenAI API integration
-- [ ] Error handling and logging
-
-### Phase 2: LLM Integration (Week 3-4)
-- [ ] Implement async background job processing
-- [ ] Develop dual-pass analysis workflow with focused prompts
-- [ ] Add thinking stream capture and parsing
-- [ ] Create text-to-JSON conversion for contest data
-- [ ] Build human-readable result formatting
-- [ ] Add real-time progress tracking via WebSockets/SSE
-- [ ] Test with sample ballots from experiments
-
-### Phase 3: UI Polish and Validation (Week 5-6)
-- [ ] Enhance frontend UX/UI
-- [ ] Add comprehensive input validation
-- [ ] Implement result visualization
-- [ ] Create comprehensive error messages
-- [ ] Add loading states and progress indicators
-
-### Phase 4: Testing and Refinement (Week 7-8)
-- [ ] Test with ballot dataset from experiments
-- [ ] Refine prompts based on results
-- [ ] Optimize API response times
-- [ ] Add configuration options
-- [ ] Documentation and deployment preparation
-
-## Configuration and Environment
-
-### Environment Variables
-```bash
-# OpenAI Configuration
-OPENAI_API_KEY=sk-your-api-key-here
-OPENAI_MODEL=gpt-4o  # Latest model with vision + code interpreter
-OPENAI_MAX_TOKENS=16000  # Higher limit for image analysis
-OPENAI_TEMPERATURE=0.1  # Low temperature for consistent results
-
-# Flask Configuration  
-FLASK_ENV=development
-FLASK_DEBUG=true
-SECRET_KEY=your-secret-key
-
-# File Upload Configuration
-MAX_CONTENT_LENGTH=50331648  # 48MB for high-res ballot images
-UPLOAD_FOLDER=./uploads
-ALLOWED_EXTENSIONS=png
-MAX_IMAGE_DIMENSION=4096  # Resize if larger
-
-# Analysis Configuration
-ANALYSIS_TIMEOUT=600  # 10 minutes for complex analysis
-CONFIDENCE_THRESHOLD=0.7
-THINKING_STREAM_ENABLED=true
-```
-
-**OpenAI API Key Setup:**
-1. Add your OpenAI API key to `/Users/epaulson/development/ballot-llm-ui/backend/.env`
-2. The Flask app loads environment variables using `python-dotenv`
-3. The key will be available to the Flask code via `os.getenv('OPENAI_API_KEY')`
-4. Make sure `.env` is in your `.gitignore` to keep the API key secure
-
-### Development Setup
-1. **Backend Setup**:
-   ```bash
-   source .venv/bin/activate
-   cd backend
-   pip install -r requirements.txt
-   export FLASK_APP=app.py
-   flask run
-   ```
-
-2. **Frontend Setup**:
-   ```bash
+**📁 DEPLOYMENT**: Both frontend and backend run on local development servers and are ready for testing with real ballot images.
    cd frontend
    npm install
    npm start

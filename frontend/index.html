@@ -261,6 +261,10 @@
             border-left: 4px solid #dc3545;
         }
 
+        .results-section.spelling-errors {
+            border-left: 4px solid #e83e8c;
+        }
+
         .results-section.other-issues {
             border-left: 4px solid #ffc107;
         }
@@ -413,7 +417,7 @@
     <div class="container">
         <div class="header">
             <h1>Ballot Verification Tool</h1>
-            <p>Upload a ballot image and contest data to check for missing ovals and misspellings</p>
+            <p>Upload a ballot image and contest data to check for missing ovals and candidate name spelling errors</p>
         </div>
 
         <div class="main-content">
@@ -471,10 +475,10 @@ Justice of the Supreme Court
                     <div class="results-text" id="results-text">
                         Upload a ballot image and contest data, then click "Analyze Ballot" to begin verification.
 
-                        This tool will check for:
+                        This multi-agent tool will check for:
                         • Missing selection ovals next to candidates
-                        • Misspelled candidate names
-                        • Missing races or candidates
+                        • Spelling errors in candidate names
+                        • Other visual anomalies and formatting issues
 
                         Results will appear here when analysis is complete.
                     </div>
@@ -756,8 +760,8 @@ Justice of the Supreme Court
                     const result = await response.json();
                     analysisJobId = result.job_id;
                     
-                    updateStatus('Analysis started with OpenAI GPT-4o...', 'processing');
-                    document.getElementById('results-text').textContent = `Job ID: ${result.job_id}\n\nStatus: ${result.message}\n\nAnalyzing ballot for missing ovals and other issues...`;
+                    updateStatus('Multi-agent analysis started with OpenAI GPT-4o...', 'processing');
+                    document.getElementById('results-text').textContent = `Job ID: ${result.job_id}\n\nStatus: ${result.message}\n\nAgent 1: Checking for missing ovals...\nAgent 2: Checking candidate name spelling...`;
                     
                     // Start polling for status updates
                     pollAnalysisStatus();
@@ -816,7 +820,7 @@ Justice of the Supreme Court
                 const data = await response.json();
                 const results = data.results;
                 
-                updateStatus('Analysis completed!', 'complete');
+                updateStatus('Multi-agent analysis completed!', 'complete');
                 
                 // Display formatted results
                 displayAnalysisResults(results);
@@ -828,8 +832,37 @@ Justice of the Supreme Court
         }
 
         function displayAnalysisResults(results) {
-            const findings = results.findings;
-            const rawAnalysis = results.raw_analysis;
+            // Handle both old and new result structures
+            let findings, rawAnalysis;
+            let isMultiAgent = false;
+            
+            if (results.combined_analysis) {
+                // New multi-agent structure
+                isMultiAgent = true;
+                findings = {
+                    summary: results.combined_analysis.summary,
+                    confidence_summary: results.combined_analysis.confidence_summary,
+                    total_issues: results.combined_analysis.total_issues,
+                    missing_ovals: results.combined_analysis.issues_by_type.missing_ovals,
+                    spelling_errors: results.combined_analysis.issues_by_type.spelling_errors,
+                    other_issues: results.combined_analysis.issues_by_type.other_issues
+                };
+                // Combine raw analyses from both agents
+                rawAnalysis = '';
+                if (results.agent_results.missing_ovals?.raw_analysis) {
+                    rawAnalysis += '=== MISSING OVALS ANALYSIS ===\n\n';
+                    rawAnalysis += results.agent_results.missing_ovals.raw_analysis;
+                    rawAnalysis += '\n\n';
+                }
+                if (results.agent_results.spelling?.raw_analysis) {
+                    rawAnalysis += '=== SPELLING ANALYSIS ===\n\n';
+                    rawAnalysis += results.agent_results.spelling.raw_analysis;
+                }
+            } else {
+                // Legacy single-agent structure
+                findings = results.findings;
+                rawAnalysis = results.raw_analysis;
+            }
             
             // Create structured results display
             const resultsContainer = document.getElementById('results-text');
@@ -839,9 +872,15 @@ Justice of the Supreme Court
             resultsContainer.className = 'results-sections';
             
             // Summary section
-            const summarySection = createResultsSection('summary', 'Analysis Summary', findings.summary);
+            const summarySection = createResultsSection('summary', isMultiAgent ? '🔍 Multi-Agent Analysis Summary' : 'Analysis Summary', findings.summary);
             if (findings.confidence_summary) {
                 summarySection.innerHTML += `<p><strong>Confidence:</strong> ${findings.confidence_summary}</p>`;
+            }
+            if (isMultiAgent && results.combined_analysis.agent_summaries) {
+                summarySection.innerHTML += '<div style="margin-top: 10px; font-size: 14px; color: #666;">';
+                summarySection.innerHTML += `<strong>Missing Ovals:</strong> ${results.combined_analysis.agent_summaries.missing_ovals}<br>`;
+                summarySection.innerHTML += `<strong>Spelling Check:</strong> ${results.combined_analysis.agent_summaries.spelling}`;
+                summarySection.innerHTML += '</div>';
             }
             resultsContainer.appendChild(summarySection);
             
@@ -872,6 +911,35 @@ Justice of the Supreme Court
                 });
                 
                 resultsContainer.appendChild(missingSection);
+            }
+            
+            // Spelling errors section
+            if (findings.spelling_errors && findings.spelling_errors.length > 0) {
+                const spellingSection = createResultsSection('spelling-errors', `❌ Spelling Errors (${findings.spelling_errors.length})`, '');
+                
+                findings.spelling_errors.forEach((error, index) => {
+                    const findingDiv = document.createElement('div');
+                    findingDiv.className = `finding-item ${error.confidence || 'medium'}-confidence`;
+                    
+                    let findingHTML = `<strong>${index + 1}.</strong> ${convertMarkdownToHTML(error.description)}`;
+                    
+                    if (error.candidate) {
+                        findingHTML += `<br><em>Candidate: ${error.candidate}</em>`;
+                    }
+                    
+                    if (error.contest) {
+                        findingHTML += `<br><em>Contest: ${error.contest}</em>`;
+                    }
+                    
+                    if (error.confidence) {
+                        findingHTML += `<span class="confidence-badge ${error.confidence}">${error.confidence}</span>`;
+                    }
+                    
+                    findingDiv.innerHTML = findingHTML;
+                    spellingSection.appendChild(findingDiv);
+                });
+                
+                resultsContainer.appendChild(spellingSection);
             }
             
             // Other issues section
@@ -909,7 +977,11 @@ Justice of the Supreme Court
             if (findings.total_issues === 0) {
                 const noIssuesDiv = document.createElement('div');
                 noIssuesDiv.className = 'no-issues';
-                noIssuesDiv.innerHTML = '✅ No issues detected! All candidates appear to have proper voting ovals.';
+                if (isMultiAgent) {
+                    noIssuesDiv.innerHTML = '✅ No issues detected! All candidates have proper voting ovals and names are spelled correctly.';
+                } else {
+                    noIssuesDiv.innerHTML = '✅ No issues detected! All candidates appear to have proper voting ovals.';
+                }
                 resultsContainer.appendChild(noIssuesDiv);
             }
             
@@ -987,7 +1059,7 @@ Justice of the Supreme Court
             clearImage();
             
             updateStatus('Ready - Upload image and contest data to begin', 'ready');
-            document.getElementById('results-text').textContent = 'Upload a ballot image and contest data, then click "Analyze Ballot" to begin verification.\n\nThis tool will check for:\n• Missing selection ovals next to candidates\n• Misspelled candidate names\n• Missing races or candidates\n\nResults will appear here when analysis is complete.';
+            document.getElementById('results-text').textContent = 'Upload a ballot image and contest data, then click "Analyze Ballot" to begin verification.\n\nThis multi-agent tool will check for:\n• Missing selection ovals next to candidates\n• Spelling errors in candidate names\n• Other visual anomalies and formatting issues\n\nResults will appear here when analysis is complete.';
             
             updateAnalyzeButton();
         }

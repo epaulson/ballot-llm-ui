@@ -238,11 +238,11 @@ def encode_image(image_path):
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 def analyze_ballot_with_openai(image_path, job_id):
-    """Analyze ballot image for missing ovals using OpenAI GPT-4o with vision"""
+    """Orchestrate multi-agent ballot analysis using OpenAI GPT-4o with vision"""
     try:
         # Log session start
         log_openai_session(job_id, 'metadata', {
-            'action': 'start_analysis',
+            'action': 'start_multi_agent_analysis',
             'image_path': image_path,
             'image_size': os.path.getsize(image_path)
         })
@@ -250,21 +250,95 @@ def analyze_ballot_with_openai(image_path, job_id):
         # Update job status
         if job_id in analysis_jobs:
             analysis_jobs[job_id]['status'] = 'processing'
-            analysis_jobs[job_id]['progress'] = 10
-            analysis_jobs[job_id]['message'] = 'Encoding image for analysis...'
+            analysis_jobs[job_id]['progress'] = 5
+            analysis_jobs[job_id]['message'] = 'Starting multi-agent analysis...'
+            analysis_jobs[job_id]['agents'] = {
+                'missing_ovals': {'status': 'pending', 'results': None},
+                'spelling': {'status': 'pending', 'results': None}
+            }
 
+        # Get contest data for spelling analysis
+        contest_data_id = analysis_jobs[job_id].get('contest_data_id')
+        contest_data = None
+        if contest_data_id and f"contests_{contest_data_id}" in analysis_jobs:
+            contest_data = analysis_jobs[f"contests_{contest_data_id}"]
+
+        # Run Agent 1: Missing Ovals Analysis
+        log_openai_session(job_id, 'metadata', {'action': 'starting_agent_missing_ovals'})
+        if job_id in analysis_jobs:
+            analysis_jobs[job_id]['progress'] = 10
+            analysis_jobs[job_id]['message'] = 'Agent 1: Analyzing for missing ovals...'
+            analysis_jobs[job_id]['agents']['missing_ovals']['status'] = 'running'
+        
+        missing_ovals_results = analyze_ballot_for_missing_ovals(image_path, job_id)
+        
+        if job_id in analysis_jobs:
+            analysis_jobs[job_id]['agents']['missing_ovals']['status'] = 'completed'
+            analysis_jobs[job_id]['agents']['missing_ovals']['results'] = missing_ovals_results
+            analysis_jobs[job_id]['progress'] = 50
+            analysis_jobs[job_id]['message'] = 'Agent 2: Analyzing for spelling errors...'
+            analysis_jobs[job_id]['agents']['spelling']['status'] = 'running'
+
+        # Run Agent 2: Spelling Analysis
+        log_openai_session(job_id, 'metadata', {'action': 'starting_agent_spelling'})
+        spelling_results = analyze_ballot_for_spelling(image_path, contest_data, job_id)
+        
+        if job_id in analysis_jobs:
+            analysis_jobs[job_id]['agents']['spelling']['status'] = 'completed'
+            analysis_jobs[job_id]['agents']['spelling']['results'] = spelling_results
+            analysis_jobs[job_id]['progress'] = 90
+            analysis_jobs[job_id]['message'] = 'Combining analysis results...'
+
+        # Combine results from both agents
+        combined_results = combine_agent_results(missing_ovals_results, spelling_results)
+        
+        # Update job with final results
+        if job_id in analysis_jobs:
+            analysis_jobs[job_id]['status'] = 'completed'
+            analysis_jobs[job_id]['progress'] = 100
+            analysis_jobs[job_id]['message'] = 'Multi-agent analysis completed successfully'
+            analysis_jobs[job_id]['results'] = {
+                'combined_analysis': combined_results,
+                'agent_results': {
+                    'missing_ovals': missing_ovals_results,
+                    'spelling': spelling_results
+                },
+                'completed_at': datetime.now().isoformat()
+            }
+
+        # Log completion
+        log_openai_session(job_id, 'metadata', {
+            'action': 'multi_agent_analysis_completed',
+            'status': 'success',
+            'agents_completed': ['missing_ovals', 'spelling']
+        })
+
+    except Exception as e:
+        # Log the error
+        log_openai_session(job_id, 'error', {
+            'action': 'multi_agent_analysis_failed',
+            'error_message': str(e),
+            'error_type': type(e).__name__
+        })
+        
+        # Update job with error
+        if job_id in analysis_jobs:
+            analysis_jobs[job_id]['status'] = 'error'
+            analysis_jobs[job_id]['progress'] = 0
+            analysis_jobs[job_id]['message'] = f'Multi-agent analysis failed: {str(e)}'
+            analysis_jobs[job_id]['error'] = str(e)
+
+def analyze_ballot_for_missing_ovals(image_path, job_id):
+    """Agent 1: Analyze ballot image for missing ovals using OpenAI GPT-4o with vision"""
+    try:
         # Encode the image
         base64_image = encode_image(image_path)
         
         # Log image encoding completion
         log_openai_session(job_id, 'metadata', {
-            'action': 'image_encoded',
+            'action': 'agent_missing_ovals_image_encoded',
             'base64_length': len(base64_image)
         })
-        
-        if job_id in analysis_jobs:
-            analysis_jobs[job_id]['progress'] = 30
-            analysis_jobs[job_id]['message'] = 'Sending to OpenAI for visual analysis...'
 
         # Create the visual analysis prompt
         prompt = """I am trying to proof some drafts of ballots for an upcoming election, before we send them to the printer to create the actual ballots. I am attaching a PNG file of one of the ballots, I would like you to look at it carefully and try to see if there are any mistakes. I am specifically worried that the ovals near each candidate might be missing - sometimes the software drops them. 
@@ -315,19 +389,15 @@ Please be thorough but focus primarily on missing ovals as that is our main conc
         # Log the response
         log_openai_response(job_id, response)
 
-        if job_id in analysis_jobs:
-            analysis_jobs[job_id]['progress'] = 80
-            analysis_jobs[job_id]['message'] = 'Processing analysis results...'
-
         # Extract the analysis content
         analysis_content = response.choices[0].message.content
         
         # Parse the response to extract structured findings
-        findings = parse_analysis_results(analysis_content)
+        findings = parse_missing_ovals_results(analysis_content)
         
         # Log the parsed findings
         log_openai_session(job_id, 'metadata', {
-            'action': 'analysis_parsed',
+            'action': 'agent_missing_ovals_parsed',
             'findings_summary': {
                 'missing_ovals_count': len(findings['missing_ovals']),
                 'other_issues_count': len(findings['other_issues']),
@@ -335,37 +405,290 @@ Please be thorough but focus primarily on missing ovals as that is our main conc
             }
         })
         
-        # Update job with results
-        if job_id in analysis_jobs:
-            analysis_jobs[job_id]['status'] = 'completed'
-            analysis_jobs[job_id]['progress'] = 100
-            analysis_jobs[job_id]['message'] = 'Analysis completed successfully'
-            analysis_jobs[job_id]['results'] = {
-                'raw_analysis': analysis_content,
-                'findings': findings,
-                'completed_at': datetime.now().isoformat()
-            }
-
-        # Log completion
-        log_openai_session(job_id, 'metadata', {
-            'action': 'analysis_completed',
-            'status': 'success'
-        })
+        return {
+            'agent': 'missing_ovals',
+            'raw_analysis': analysis_content,
+            'findings': findings,
+            'completed_at': datetime.now().isoformat()
+        }
 
     except Exception as e:
-        # Log the error
         log_openai_session(job_id, 'error', {
-            'action': 'analysis_failed',
+            'action': 'agent_missing_ovals_failed',
             'error_message': str(e),
             'error_type': type(e).__name__
         })
+        raise e
+
+def analyze_ballot_for_spelling(image_path, contest_data, job_id):
+    """Agent 2: Analyze ballot image for spelling errors in candidate names using OpenAI GPT-4o with vision"""
+    try:
+        # Encode the image
+        base64_image = encode_image(image_path)
         
-        # Update job with error
-        if job_id in analysis_jobs:
-            analysis_jobs[job_id]['status'] = 'error'
-            analysis_jobs[job_id]['progress'] = 0
-            analysis_jobs[job_id]['message'] = f'Analysis failed: {str(e)}'
-            analysis_jobs[job_id]['error'] = str(e)
+        # Log image encoding completion
+        log_openai_session(job_id, 'metadata', {
+            'action': 'agent_spelling_image_encoded',
+            'base64_length': len(base64_image)
+        })
+
+        # Format contest data for the prompt
+        contest_text = ""
+        if contest_data and 'raw_text' in contest_data:
+            contest_text = contest_data['raw_text']
+        elif contest_data and 'parsed_data' in contest_data:
+            # Reconstruct text from parsed data
+            contests = contest_data['parsed_data'].get('contests', [])
+            text_parts = []
+            for contest in contests:
+                title = contest['title']
+                if contest['vote_for'] > 1:
+                    title += f" ({contest['vote_for']})"
+                text_parts.append(title)
+                for candidate in contest['candidates']:
+                    text_parts.append(f"  {candidate}")
+                if contest['reporting_units']:
+                    text_parts.append(f"  Reporting Units: {contest['reporting_units']}")
+                text_parts.append("")  # Empty line between contests
+            contest_text = "\n".join(text_parts)
+
+        # Create the spelling analysis prompt
+        prompt = f"""I am proofreading a ballot before it goes to print. I need you to carefully examine the attached ballot image and compare the candidate names shown on the ballot with the official candidate list I'm providing below.
+
+Official Contest and Candidate Data:
+{contest_text}
+
+Please:
+1. Read all candidate names from the ballot image
+2. Compare each name against the official list above
+3. Report any spelling discrepancies, typos, or formatting differences
+4. Note your confidence level for each finding (high/medium/low)
+5. Specify the exact contest and candidate where you found issues
+6. Be very careful about similar names and minor variations
+
+Focus specifically on:
+- Misspelled candidate names
+- Missing or extra letters
+- Wrong capitalization
+- Formatting inconsistencies
+- Names that don't match the official list
+
+The ballot is laid out in three columns, read top to bottom and then left to right. Please be systematic in your comparison."""
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64_image}",
+                            "detail": "high"
+                        }
+                    }
+                ]
+            }
+        ]
+
+        # Log the request (with image data redacted)
+        log_openai_request(
+            job_id=job_id,
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=1500,
+            temperature=0.1
+        )
+
+        # Call OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=1500,
+            temperature=0.1  # Low temperature for consistent analysis
+        )
+
+        # Log the response
+        log_openai_response(job_id, response)
+
+        # Extract the analysis content
+        analysis_content = response.choices[0].message.content
+        
+        # Parse the response to extract structured findings
+        findings = parse_spelling_results(analysis_content)
+        
+        # Log the parsed findings
+        log_openai_session(job_id, 'metadata', {
+            'action': 'agent_spelling_parsed',
+            'findings_summary': {
+                'spelling_errors_count': len(findings['spelling_errors']),
+                'other_issues_count': len(findings['other_issues']),
+                'total_issues': findings['total_issues']
+            }
+        })
+        
+        return {
+            'agent': 'spelling',
+            'raw_analysis': analysis_content,
+            'findings': findings,
+            'completed_at': datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        log_openai_session(job_id, 'error', {
+            'action': 'agent_spelling_failed',
+            'error_message': str(e),
+            'error_type': type(e).__name__
+        })
+        raise e
+
+def parse_missing_ovals_results(analysis_text):
+    """Parse OpenAI missing ovals analysis results into structured format"""
+    return parse_analysis_results(analysis_text)  # Use existing parser for backward compatibility
+
+def parse_spelling_results(analysis_text):
+    """Parse OpenAI spelling analysis results into structured format"""
+    findings = {
+        'spelling_errors': [],
+        'other_issues': [],
+        'summary': '',
+        'total_issues': 0,
+        'confidence_summary': '',
+        'detailed_analysis': analysis_text,
+        'sections': {
+            'general_observations': [],
+            'specific_findings': [],
+            'recommendations': []
+        }
+    }
+    
+    # Split the text into lines for parsing
+    lines = analysis_text.split('\n')
+    current_section = None
+    
+    # Keywords for different types of issues
+    spelling_keywords = ['misspell', 'spelling', 'typo', 'incorrect', 'wrong name', 'name error', 'discrepancy']
+    confidence_keywords = ['confidence:', 'confidence level:', 'high confidence', 'medium confidence', 'low confidence']
+    
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Detect sections
+        if any(header in line.lower() for header in ['general observation', 'overall', 'summary']):
+            current_section = 'general_observations'
+            continue
+        elif any(header in line.lower() for header in ['specific finding', 'findings', 'issues found']):
+            current_section = 'specific_findings'
+            continue
+        elif any(header in line.lower() for header in ['recommendation', 'suggest', 'next steps']):
+            current_section = 'recommendations'
+            continue
+        
+        # Parse spelling errors specifically
+        line_lower = line.lower()
+        if any(keyword in line_lower for keyword in spelling_keywords):
+            # Extract candidate/contest info
+            candidate_name = extract_candidate_name(line)
+            contest_name = extract_contest_name(line, lines, i)
+            confidence = extract_confidence(line)
+            
+            spelling_error = {
+                'description': clean_markdown(line),
+                'candidate': candidate_name,
+                'contest': contest_name,
+                'confidence': confidence,
+                'raw_text': line
+            }
+            findings['spelling_errors'].append(spelling_error)
+        
+        # Categorize other issues
+        elif any(keyword in line_lower for keyword in ['issue', 'problem', 'error', 'anomaly', 'concern']):
+            if not any(keyword in line_lower for keyword in spelling_keywords):  # Avoid double-counting
+                other_issue = {
+                    'description': clean_markdown(line),
+                    'type': classify_issue_type(line),
+                    'severity': extract_severity(line),
+                    'raw_text': line
+                }
+                findings['other_issues'].append(other_issue)
+        
+        # Add to appropriate section
+        if current_section and line:
+            findings['sections'][current_section].append(clean_markdown(line))
+    
+    # Generate summary
+    spelling_count = len(findings['spelling_errors'])
+    other_count = len(findings['other_issues'])
+    findings['total_issues'] = spelling_count + other_count
+    
+    if spelling_count == 0 and other_count == 0:
+        findings['summary'] = 'No spelling errors detected. All candidate names appear to match the official list.'
+        findings['confidence_summary'] = 'Spelling analysis completed successfully with no concerns found.'
+    else:
+        parts = []
+        if spelling_count > 0:
+            parts.append(f"{spelling_count} spelling error{'s' if spelling_count != 1 else ''}")
+        if other_count > 0:
+            parts.append(f"{other_count} other issue{'s' if other_count != 1 else ''}")
+        
+        findings['summary'] = f"Found {' and '.join(parts)} that require attention."
+        
+        # Count confidence levels
+        high_confidence = sum(1 for error in findings['spelling_errors'] if error.get('confidence') == 'high')
+        if high_confidence > 0:
+            findings['confidence_summary'] = f"{high_confidence} high-confidence finding{'s' if high_confidence != 1 else ''}"
+        else:
+            findings['confidence_summary'] = "Mixed confidence levels in findings"
+    
+    return findings
+
+def combine_agent_results(missing_ovals_results, spelling_results):
+    """Combine results from both agents into a unified format"""
+    combined = {
+        'summary': '',
+        'total_issues': 0,
+        'issues_by_type': {
+            'missing_ovals': missing_ovals_results['findings']['missing_ovals'],
+            'spelling_errors': spelling_results['findings']['spelling_errors'],
+            'other_issues': missing_ovals_results['findings']['other_issues'] + spelling_results['findings']['other_issues']
+        },
+        'agent_summaries': {
+            'missing_ovals': missing_ovals_results['findings']['summary'],
+            'spelling': spelling_results['findings']['summary']
+        },
+        'confidence_summary': '',
+        'completed_at': datetime.now().isoformat()
+    }
+    
+    # Calculate total issues
+    oval_count = len(combined['issues_by_type']['missing_ovals'])
+    spelling_count = len(combined['issues_by_type']['spelling_errors'])
+    other_count = len(combined['issues_by_type']['other_issues'])
+    combined['total_issues'] = oval_count + spelling_count + other_count
+    
+    # Generate combined summary
+    if combined['total_issues'] == 0:
+        combined['summary'] = 'No issues detected. Ballot appears ready for printing.'
+        combined['confidence_summary'] = 'Both visual and spelling analyses completed successfully with no concerns found.'
+    else:
+        issue_parts = []
+        if oval_count > 0:
+            issue_parts.append(f"{oval_count} missing oval{'s' if oval_count != 1 else ''}")
+        if spelling_count > 0:
+            issue_parts.append(f"{spelling_count} spelling error{'s' if spelling_count != 1 else ''}")
+        if other_count > 0:
+            issue_parts.append(f"{other_count} other issue{'s' if other_count != 1 else ''}")
+        
+        combined['summary'] = f"Found {', '.join(issue_parts)} requiring attention before printing."
+        
+        # Combine confidence summaries
+        oval_conf = missing_ovals_results['findings'].get('confidence_summary', '')
+        spell_conf = spelling_results['findings'].get('confidence_summary', '')
+        combined['confidence_summary'] = f"Missing ovals: {oval_conf}. Spelling: {spell_conf}"
+    
+    return combined
 
 def parse_analysis_results(analysis_text):
     """Parse OpenAI analysis results into structured format with better organization"""
@@ -747,7 +1070,7 @@ def analyze_ballot():
         return jsonify({
             'job_id': job_id,
             'status': 'queued',
-            'message': 'Analysis job started - processing with OpenAI GPT-4o'
+            'message': 'Multi-agent analysis job started - processing with OpenAI GPT-4o'
         })
         
     except Exception as e:
