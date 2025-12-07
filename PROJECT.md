@@ -490,71 +490,201 @@ THINKING_STREAM_ENABLED=true
 
 ## Development Progress
 
-### ✅ Completed (Session 1)
+### ✅ Completed (Sessions 1-2)
 
-**Phase 1: Core Infrastructure**
+**Phase 1: Core Infrastructure ✅**
 - [x] Flask backend setup with proper project structure
 - [x] File upload functionality (PNG images)
-- [x] Contest text parsing (handles indented format from CONTESTS_AND_CANDIDATES_SAMPLE.md)
+- [x] Contest text parsing (handles indented format)
 - [x] Basic three-panel frontend UI
 - [x] API endpoints for health, validation, uploads
 - [x] Image validation and resizing
 - [x] CORS configuration for frontend-backend communication
 - [x] Error handling and file security
 
-**Current Working System:**
-- Backend: Flask server on port 5000
-- Frontend: Simple HTTP server on port 8000 
-- Image uploads: PNG files validated and stored in `backend/uploads/`
-- Text parsing: Correctly handles contest format with vote counts (e.g., "Maple Bluff Village Trustee (3)")
-- Validation: Real-time contest data validation
+**Phase 2: OpenAI Integration - Missing Ovals Detection ✅**
+- [x] OpenAI GPT-4o with vision integration
+- [x] Comprehensive session logging system (`backend/openai-sessions/`)
+- [x] Background job processing with threading
+- [x] Visual analysis prompt implementation (from OVAL_PROMPT.md)
+- [x] Smart results parsing and structuring
+- [x] Real-time status polling in frontend
+- [x] Enhanced results display with organized sections
 
-### 🎯 Next Session Goals
+**UI/UX Improvements ✅**
+- [x] Structured results display (Summary, Missing Ovals, Other Issues)
+- [x] Markdown-to-HTML conversion for readable formatting
+- [x] Scrollable results container with proper styling
+- [x] Color-coded sections and confidence badges
+- [x] Collapsible raw analysis section
+- [x] Professional, clean interface matching election software standards
 
-**Phase 2: OpenAI Integration (Focus: Missing Ovals Detection)**
-- [ ] Add OpenAI Python SDK to requirements
-- [ ] Implement Pass 1: Visual analysis for missing ovals only
-- [ ] Update `/api/analyze-ballot` endpoint to call OpenAI
-- [ ] Add async job processing for long-running analysis
-- [ ] Parse and format OpenAI responses
-- [ ] Update frontend to show analysis progress and results
+### 🏗️ Architecture Implementation
 
-**Priority Order:**
-1. **Missing Ovals Detection**: Single-purpose analysis to validate approach
-2. **Basic Results Display**: Show findings in human-readable format
-3. **Error Handling**: Robust handling of OpenAI API failures
-4. **Progress Updates**: Real-time status in UI
+**Backend Job Processing System**
+```python
+# In-memory job tracking (current implementation)
+analysis_jobs = {
+    'job_id': {
+        'status': 'queued|processing|completed|error',
+        'progress': 0-100,
+        'message': 'Current status message',
+        'image_file_id': 'uuid',
+        'contest_data_id': 'uuid',
+        'created_at': 'ISO timestamp',
+        'results': {  # Only when completed
+            'raw_analysis': 'OpenAI response text',
+            'findings': {
+                'missing_ovals': [...],
+                'other_issues': [...],
+                'summary': 'text',
+                'total_issues': int,
+                'confidence_summary': 'text'
+            },
+            'completed_at': 'ISO timestamp'
+        }
+    }
+}
+```
 
-### 🔧 Setup Instructions for Next Session
+**OpenAI Session Logging**
+- Location: `backend/openai-sessions/{job_id}.log`
+- Format: JSON entries separated by `---`
+- Thread-safe append-only logging
+- Captures: requests, responses, metadata, errors
+- Base64 image data is redacted for readability
+- Added to .gitignore for security
 
-**Required for OpenAI Integration:**
-1. Add OpenAI API key to `backend/.env`:
-   ```bash
-   OPENAI_API_KEY=sk-your-actual-key-here
-   ```
-2. Install OpenAI SDK:
-   ```bash
-   source .venv/bin/activate
-   pip install openai
-   ```
-3. Start both servers:
-   ```bash
-   # Terminal 1: Backend
-   source .venv/bin/activate
-   cd backend && python app.py
-   
-   # Terminal 2: Frontend
-   cd frontend && python3 -m http.server 8000
-   ```
+**API Endpoints (Current)**
+```bash
+POST /api/upload-image          # Upload PNG ballot
+POST /api/upload-contests       # Upload contest text data
+POST /api/analyze-ballot        # Start OpenAI analysis
+GET  /api/analysis/{id}/status  # Check job progress
+GET  /api/analysis/{id}/results # Get structured findings
+GET  /api/analysis/{id}/logs    # Debug logs (development)
+GET  /api/health               # System status
+```
 
-**Test Data Available:**
-- `test-contest-data.txt`: Sample contest format for testing
-- Upload any PNG ballot image to test the complete flow
+**Frontend Architecture**
+- Polling-based status updates (2-second intervals)
+- Structured results rendering with sections
+- Markdown conversion for OpenAI response text
+- Confidence badge system (high/medium/low)
+- Scrollable, organized display replacing plain text
 
-### 🐛 Known Issues
-- Text file upload button is placeholder (manual paste works fine)
-- Frontend uses `python3` outside venv, `python` inside venv
+### 🔧 Key Functions for Extension
+
+**Adding New Analysis Types (Pattern)**
+1. Create analysis function: `analyze_ballot_with_[type](image_path, job_id, **kwargs)`
+2. Add logging calls: `log_openai_session(job_id, event_type, data)`
+3. Update parsing: `parse_[type]_results(analysis_text)`
+4. Extend frontend: Add new result section type
+
+**OpenAI Integration Pattern**
+```python
+# 1. Log session start
+log_openai_session(job_id, 'metadata', {'action': 'start_[type]_analysis'})
+
+# 2. Prepare and log request
+messages = [...] # Build prompt with image/text
+log_openai_request(job_id, model, messages, **params)
+
+# 3. Call OpenAI and log response
+response = client.chat.completions.create(...)
+log_openai_response(job_id, response)
+
+# 4. Parse and structure results
+findings = parse_results(response.choices[0].message.content)
+log_openai_session(job_id, 'metadata', {'action': 'analysis_completed'})
+```
+
+### 🎯 Next Session: Spelling Analysis Implementation
+
+**Goal**: Implement Pass 2 analysis for candidate name spelling validation
+
+**Required Implementation**:
+1. **New Analysis Function**: `analyze_ballot_spelling(image_path, contest_data, job_id)`
+   - Combines image + contest text data
+   - Uses OCR-style prompt to extract ballot text
+   - Compares against expected candidate names
+   - Reports spelling mismatches with confidence
+
+2. **Enhanced Job System**: 
+   - Support for multi-pass analysis (visual + spelling)
+   - Sequential job execution within single analysis request
+   - Combined results aggregation
+
+3. **Contest Data Integration**:
+   - Access parsed contest data from `analysis_jobs[f"contests_{data_id}"]`
+   - Format candidate names for comparison
+   - Handle fuzzy string matching for typos
+
+4. **Frontend Updates**:
+   - New "Spelling Issues" section in results
+   - Display expected vs. found name comparisons
+   - Integrate with existing structured display
+
+**Prompt Strategy for Spelling Analysis**:
+```
+Compare the candidate names in this ballot image against the expected list.
+
+Expected candidates by contest:
+{formatted_contest_data}
+
+Tasks:
+1. Extract all candidate names from the ballot using OCR
+2. Group by contest/race
+3. Compare extracted names to expected names
+4. Report any spelling differences with confidence levels
+5. Use fuzzy matching to catch common typos
+
+Focus on candidate name accuracy - this is critical for ballot validation.
+```
+
+### 🔧 Development Environment
+
+**Current Setup**:
+- Backend: Flask dev server on http://localhost:5000
+- Frontend: Python HTTP server on http://localhost:8000
+- OpenAI: GPT-4o with vision, configured for low temperature (0.1)
+- Logging: Comprehensive session logs in `backend/openai-sessions/`
+- Virtual env: `.venv` in project root
+
+**Environment Files**:
+- `.env`: Contains OPENAI_API_KEY (not in repo)
+- `.env.example`: Template for required environment variables
+- `.gitignore`: Includes openai-sessions/ and .env
+
+**Key Dependencies**:
+```
+flask
+werkzeug
+pillow
+python-dotenv
+flask-cors
+uuid
+openai
+```
+
+### 🐛 Known Considerations
+
+**Current Limitations**:
+- In-memory job storage (will need persistence for production)
+- Single-threaded background processing (works for demo)
+- Basic error handling (needs enhancement for production)
+- No user authentication (appropriate for current scope)
+
+**Performance Notes**:
+- OpenAI API calls: ~10-30 seconds for ballot analysis
+- Image processing: <1 second for validation/resize
+- Frontend polling: 2-second intervals for status updates
+
+**Security**:
+- OpenAI sessions contain sensitive ballot data (properly gitignored)
+- Image uploads stored in backend/uploads/ (cleanup needed)
+- API key properly protected in environment variables
 
 ---
 
-*This project plan will be updated as development progresses and requirements evolve based on user feedback and technical discoveries.*
+*Updated through Session 2. Ready for spelling analysis implementation in Session 3.*
