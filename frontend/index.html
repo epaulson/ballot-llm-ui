@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ballot Verification Tool</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .panel-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Left Panel - Contest Data */
+        .contest-textarea {
+            flex: 1;
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 300px;
+        }
+
+        .contest-textarea:focus {
+            outline: none;
+            border-color: #007cba;
+        }
+
+        .file-upload-btn {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .file-upload-btn:hover {
+            background: #005a85;
+        }
+
+        .validation-status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .validation-status.valid {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .validation-status.invalid {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* Center Panel - Image Upload */
+        .image-drop-zone {
+            flex: 1;
+            border: 3px dashed #ddd;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .image-drop-zone:hover {
+            border-color: #007cba;
+            background: #f8f9fa;
+        }
+
+        .image-drop-zone.dragover {
+            border-color: #007cba;
+            background: #e3f2fd;
+        }
+
+        .image-preview {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+        }
+
+        .image-preview img {
+            max-width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+
+        .image-info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .clear-image {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
+        .clear-image:hover {
+            background: #c82333;
+        }
+
+        /* Right Panel - Results */
+        .results-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-indicator {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status-indicator.ready {
+            background: #e2e3e5;
+            color: #6c757d;
+        }
+
+        .status-indicator.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-indicator.complete {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-indicator.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .results-text {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-y: auto;
+            max-height: 500px;
+            line-height: 1.5;
+        }
+
+        /* Enhanced results display */
+        .results-sections {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .results-section {
+            background: white;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .results-section h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .results-section.summary {
+            border-left: 4px solid #007bff;
+        }
+
+        .results-section.missing-ovals {
+            border-left: 4px solid #dc3545;
+        }
+
+        .results-section.other-issues {
+            border-left: 4px solid #ffc107;
+        }
+
+        .results-section.raw-analysis {
+            border-left: 4px solid #6c757d;
+        }
+
+        .finding-item {
+            background: #f8f9fa;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 8px 0;
+            border-left: 3px solid #dee2e6;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .finding-item.high-confidence {
+            border-left-color: #dc3545;
+        }
+
+        .finding-item.medium-confidence {
+            border-left-color: #ffc107;
+        }
+
+        .finding-item.low-confidence {
+            border-left-color: #6c757d;
+        }
+
+        .confidence-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+
+        .confidence-badge.high {
+            background: #dc3545;
+            color: white;
+        }
+
+        .confidence-badge.medium {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .confidence-badge.low {
+            background: #6c757d;
+            color: white;
+        }
+
+        .no-issues {
+            text-align: center;
+            color: #28a745;
+            font-weight: 500;
+            padding: 20px;
+        }
+
+        .raw-analysis-toggle {
+            cursor: pointer;
+            color: #007bff;
+            text-decoration: underline;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .raw-analysis-content {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        /* Bottom Panel - Actions */
+        .actions {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .analyze-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-right: 15px;
+        }
+
+        .analyze-btn:hover {
+            background: #218838;
+        }
+
+        .analyze-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .reset-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .reset-btn:hover {
+            background: #5a6268;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .upload-progress {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .upload-progress-bar {
+            height: 100%;
+            background: #007cba;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Ballot Verification Tool</h1>
+            <p>Upload a ballot image and contest data to check for missing ovals and misspellings</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Left Panel: Contest Data -->
+            <div class="panel">
+                <h2>Contest & Candidate Data</h2>
+                <div class="panel-content">
+                    <button class="file-upload-btn" onclick="uploadContestFile()">Upload Text File</button>
+                    <textarea class="contest-textarea" id="contest-text" placeholder="Paste or type contest data here...
+
+Example format:
+State Superintendent
+  Brittany Kinser
+  Jill Underly
+  Reporting Units: All Reporting Units
+
+Justice of the Supreme Court
+  Brad Schimel
+  Susan Crawford
+  Reporting Units: All Reporting Units"></textarea>
+                    <div class="validation-status" id="validation-status" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Center Panel: Image Upload -->
+            <div class="panel">
+                <h2>Ballot Image</h2>
+                <div class="panel-content">
+                    <div class="image-drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                        <div>
+                            <p style="font-size: 18px; margin-bottom: 10px;">📁</p>
+                            <p>Click to upload or drag & drop</p>
+                            <p style="font-size: 12px; color: #666; margin-top: 5px;">PNG files only</p>
+                        </div>
+                    </div>
+                    <div class="image-preview" id="image-preview">
+                        <img id="preview-img" src="" alt="Ballot preview">
+                        <div class="image-info" id="image-info"></div>
+                        <button class="clear-image" onclick="clearImage()">Clear Image</button>
+                    </div>
+                    <input type="file" id="file-input" accept=".png" onchange="handleImageUpload(this)">
+                    <div class="upload-progress" id="upload-progress" style="display: none;">
+                        <div class="upload-progress-bar" id="upload-progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Results -->
+            <div class="panel">
+                <h2>Analysis Results</h2>
+                <div class="panel-content">
+                    <div class="status-indicator ready" id="status-indicator">
+                        Ready - Upload image and contest data to begin
+                    </div>
+                    <div class="results-text" id="results-text">
+                        Upload a ballot image and contest data, then click "Analyze Ballot" to begin verification.
+
+                        This tool will check for:
+                        • Missing selection ovals next to candidates
+                        • Misspelled candidate names
+                        • Missing races or candidates
+
+                        Results will appear here when analysis is complete.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Panel: Actions -->
+        <div class="actions">
+            <button class="analyze-btn" id="analyze-btn" onclick="analyzeBallot()" disabled>
+                Analyze Ballot
+            </button>
+            <button class="reset-btn" onclick="resetAll()">
+                Reset All
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let uploadedImageId = null;
+        let uploadedContestDataId = null;
+        let analysisJobId = null;
+
+        // API base URL
+        const API_BASE = 'http://localhost:5000/api';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            setupDragAndDrop();
+            setupContestValidation();
+        });
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, unhighlight, false);
+            });
+
+            dropZone.addEventListener('drop', handleDrop, false);
+        }
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function highlight(e) {
+            document.getElementById('drop-zone').classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            document.getElementById('drop-zone').classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                document.getElementById('file-input').files = files;
+                handleImageUpload(document.getElementById('file-input'));
+            }
+        }
+
+        function setupContestValidation() {
+            const textarea = document.getElementById('contest-text');
+            textarea.addEventListener('input', debounce(validateContestData, 500));
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        async function validateContestData() {
+            const text = document.getElementById('contest-text').value.trim();
+            const statusEl = document.getElementById('validation-status');
+            
+            if (!text) {
+                statusEl.style.display = 'none';
+                uploadedContestDataId = null;
+                updateAnalyzeButton();
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/validate-contests`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text })
+                });
+
+                const result = await response.json();
+
+                if (result.valid) {
+                    statusEl.className = 'validation-status valid';
+                    statusEl.textContent = `✓ Valid format - ${result.contest_count} contests found`;
+                    statusEl.style.display = 'block';
+                } else {
+                    statusEl.className = 'validation-status invalid';
+                    statusEl.textContent = `✗ Invalid format: ${result.error}`;
+                    statusEl.style.display = 'block';
+                    uploadedContestDataId = null;
+                }
+            } catch (error) {
+                statusEl.className = 'validation-status invalid';
+                statusEl.textContent = '✗ Validation error';
+                statusEl.style.display = 'block';
+                uploadedContestDataId = null;
+            }
+
+            updateAnalyzeButton();
+        }
+
+        async function handleImageUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            if (!file.type.includes('png')) {
+                alert('Please upload a PNG file');
+                return;
+            }
+
+            const progressEl = document.getElementById('upload-progress');
+            const progressBar = document.getElementById('upload-progress-bar');
+            
+            progressEl.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                // Simulate progress
+                progressBar.style.width = '50%';
+
+                const response = await fetch(`${API_BASE}/upload-image`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                progressBar.style.width = '100%';
+
+                if (response.ok) {
+                    const result = await response.json();
+                    uploadedImageId = result.file_id;
+                    
+                    // Show image preview
+                    const previewImg = document.getElementById('preview-img');
+                    previewImg.src = `${API_BASE}/image/${result.file_id}`;
+                    
+                    // Show image info
+                    const imageInfo = document.getElementById('image-info');
+                    imageInfo.innerHTML = `
+                        <strong>${result.filename}</strong><br>
+                        Size: ${formatFileSize(result.size)}<br>
+                        Dimensions: ${result.dimensions}<br>
+                        Uploaded: ${new Date(result.uploaded_at).toLocaleString()}
+                    `;
+
+                    // Switch to preview mode
+                    document.getElementById('drop-zone').style.display = 'none';
+                    document.getElementById('image-preview').style.display = 'flex';
+
+                    updateStatus('Image uploaded successfully', 'complete');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Upload failed');
+                }
+            } catch (error) {
+                updateStatus(`Upload failed: ${error.message}`, 'error');
+                uploadedImageId = null;
+            } finally {
+                setTimeout(() => {
+                    progressEl.style.display = 'none';
+                }, 1000);
+            }
+
+            updateAnalyzeButton();
+        }
+
+        function clearImage() {
+            uploadedImageId = null;
+            document.getElementById('drop-zone').style.display = 'flex';
+            document.getElementById('image-preview').style.display = 'none';
+            document.getElementById('file-input').value = '';
+            updateStatus('Ready - Upload image and contest data to begin', 'ready');
+            updateAnalyzeButton();
+        }
+
+        async function uploadContestFile() {
+            // For now, just focus on the textarea
+            document.getElementById('contest-text').focus();
+            // TODO: Implement file upload dialog
+        }
+
+        async function uploadContestData() {
+            const text = document.getElementById('contest-text').value.trim();
+            
+            if (!text) {
+                alert('Please enter contest data');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/upload-contests`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    uploadedContestDataId = result.data_id;
+                    updateStatus(`Contest data uploaded: ${result.contest_count} contests`, 'complete');
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Upload failed');
+                }
+            } catch (error) {
+                updateStatus(`Contest upload failed: ${error.message}`, 'error');
+                uploadedContestDataId = null;
+            }
+
+            updateAnalyzeButton();
+        }
+
+        async function analyzeBallot() {
+            if (!uploadedImageId) {
+                alert('Please upload a ballot image first');
+                return;
+            }
+
+            // Upload contest data if not already uploaded
+            if (!uploadedContestDataId) {
+                await uploadContestData();
+                if (!uploadedContestDataId) {
+                    return; // Upload failed
+                }
+            }
+
+            try {
+                updateStatus('Starting analysis...', 'processing');
+                
+                const response = await fetch(`${API_BASE}/analyze-ballot`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        image_file_id: uploadedImageId,
+                        contest_data_id: uploadedContestDataId
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    analysisJobId = result.job_id;
+                    
+                    updateStatus('Analysis started with OpenAI GPT-4o...', 'processing');
+                    document.getElementById('results-text').textContent = `Job ID: ${result.job_id}\n\nStatus: ${result.message}\n\nAnalyzing ballot for missing ovals and other issues...`;
+                    
+                    // Start polling for status updates
+                    pollAnalysisStatus();
+                    
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Analysis failed');
+                }
+            } catch (error) {
+                updateStatus(`Analysis failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function pollAnalysisStatus() {
+            if (!analysisJobId) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/analysis/${analysisJobId}/status`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to get status');
+                }
+                
+                const status = await response.json();
+                
+                // Update status display
+                updateStatus(`${status.message} (${status.progress}%)`, 'processing');
+                
+                if (status.status === 'completed') {
+                    // Analysis completed, fetch results
+                    await fetchAnalysisResults();
+                } else if (status.status === 'error') {
+                    updateStatus('Analysis failed', 'error');
+                    document.getElementById('results-text').textContent = `Analysis failed: ${status.message}`;
+                } else {
+                    // Still processing, poll again in 2 seconds
+                    setTimeout(pollAnalysisStatus, 2000);
+                }
+                
+            } catch (error) {
+                updateStatus('Failed to check analysis status', 'error');
+                console.error('Status polling error:', error);
+            }
+        }
+
+        async function fetchAnalysisResults() {
+            if (!analysisJobId) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/analysis/${analysisJobId}/results`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to get results');
+                }
+                
+                const data = await response.json();
+                const results = data.results;
+                
+                updateStatus('Analysis completed!', 'complete');
+                
+                // Display formatted results
+                displayAnalysisResults(results);
+                
+            } catch (error) {
+                updateStatus('Failed to fetch results', 'error');
+                console.error('Results fetch error:', error);
+            }
+        }
+
+        function displayAnalysisResults(results) {
+            const findings = results.findings;
+            const rawAnalysis = results.raw_analysis;
+            
+            // Create structured results display
+            const resultsContainer = document.getElementById('results-text');
+            
+            // Clear previous results
+            resultsContainer.innerHTML = '';
+            resultsContainer.className = 'results-sections';
+            
+            // Summary section
+            const summarySection = createResultsSection('summary', 'Analysis Summary', findings.summary);
+            if (findings.confidence_summary) {
+                summarySection.innerHTML += `<p><strong>Confidence:</strong> ${findings.confidence_summary}</p>`;
+            }
+            resultsContainer.appendChild(summarySection);
+            
+            // Missing ovals section
+            if (findings.missing_ovals && findings.missing_ovals.length > 0) {
+                const missingSection = createResultsSection('missing-ovals', `⚠️ Missing Ovals (${findings.missing_ovals.length})`, '');
+                
+                findings.missing_ovals.forEach((oval, index) => {
+                    const findingDiv = document.createElement('div');
+                    findingDiv.className = `finding-item ${oval.confidence || 'medium'}-confidence`;
+                    
+                    let findingHTML = `<strong>${index + 1}.</strong> ${convertMarkdownToHTML(oval.description)}`;
+                    
+                    if (oval.candidate) {
+                        findingHTML += `<br><em>Candidate: ${oval.candidate}</em>`;
+                    }
+                    
+                    if (oval.contest) {
+                        findingHTML += `<br><em>Contest: ${oval.contest}</em>`;
+                    }
+                    
+                    if (oval.confidence) {
+                        findingHTML += `<span class="confidence-badge ${oval.confidence}">${oval.confidence}</span>`;
+                    }
+                    
+                    findingDiv.innerHTML = findingHTML;
+                    missingSection.appendChild(findingDiv);
+                });
+                
+                resultsContainer.appendChild(missingSection);
+            }
+            
+            // Other issues section
+            if (findings.other_issues && findings.other_issues.length > 0) {
+                const otherSection = createResultsSection('other-issues', `ℹ️ Other Issues (${findings.other_issues.length})`, '');
+                
+                findings.other_issues.forEach((issue, index) => {
+                    const findingDiv = document.createElement('div');
+                    findingDiv.className = 'finding-item';
+                    
+                    let issueHTML = `<strong>${index + 1}.</strong> `;
+                    
+                    if (typeof issue === 'string') {
+                        issueHTML += convertMarkdownToHTML(issue);
+                    } else {
+                        issueHTML += convertMarkdownToHTML(issue.description);
+                        
+                        if (issue.type) {
+                            issueHTML += `<br><em>Type: ${issue.type}</em>`;
+                        }
+                        
+                        if (issue.severity) {
+                            issueHTML += `<span class="confidence-badge ${issue.severity}">${issue.severity}</span>`;
+                        }
+                    }
+                    
+                    findingDiv.innerHTML = issueHTML;
+                    otherSection.appendChild(findingDiv);
+                });
+                
+                resultsContainer.appendChild(otherSection);
+            }
+            
+            // No issues found
+            if (findings.total_issues === 0) {
+                const noIssuesDiv = document.createElement('div');
+                noIssuesDiv.className = 'no-issues';
+                noIssuesDiv.innerHTML = '✅ No issues detected! All candidates appear to have proper voting ovals.';
+                resultsContainer.appendChild(noIssuesDiv);
+            }
+            
+            // Raw analysis section (collapsible)
+            const rawSection = createResultsSection('raw-analysis', '📋 Detailed Analysis', '');
+            
+            const toggleSpan = document.createElement('span');
+            toggleSpan.className = 'raw-analysis-toggle';
+            toggleSpan.textContent = 'Show/Hide Raw Analysis';
+            toggleSpan.onclick = () => toggleRawAnalysis();
+            rawSection.appendChild(toggleSpan);
+            
+            const rawContent = document.createElement('div');
+            rawContent.className = 'raw-analysis-content';
+            rawContent.id = 'raw-analysis-content';
+            rawContent.textContent = rawAnalysis;
+            rawSection.appendChild(rawContent);
+            
+            resultsContainer.appendChild(rawSection);
+        }
+
+        function createResultsSection(className, title, content) {
+            const section = document.createElement('div');
+            section.className = `results-section ${className}`;
+            
+            const titleElement = document.createElement('h3');
+            titleElement.textContent = title;
+            section.appendChild(titleElement);
+            
+            if (content) {
+                const contentElement = document.createElement('p');
+                contentElement.innerHTML = convertMarkdownToHTML(content);
+                section.appendChild(contentElement);
+            }
+            
+            return section;
+        }
+
+        function convertMarkdownToHTML(text) {
+            if (!text) return '';
+            
+            // Convert basic markdown to HTML
+            let html = text
+                // Bold text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                // Italic text
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                // Headers (simple)
+                .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+                .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+                // Line breaks
+                .replace(/\n/g, '<br>')
+                // Lists (basic)
+                .replace(/^- (.*$)/gm, '• $1')
+                .replace(/^\* (.*$)/gm, '• $1');
+            
+            return html;
+        }
+
+        function toggleRawAnalysis() {
+            const content = document.getElementById('raw-analysis-content');
+            if (content) {
+                content.style.display = content.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        function resetAll() {
+            uploadedImageId = null;
+            uploadedContestDataId = null;
+            analysisJobId = null;
+            
+            document.getElementById('contest-text').value = '';
+            document.getElementById('validation-status').style.display = 'none';
+            clearImage();
+            
+            updateStatus('Ready - Upload image and contest data to begin', 'ready');
+            document.getElementById('results-text').textContent = 'Upload a ballot image and contest data, then click "Analyze Ballot" to begin verification.\n\nThis tool will check for:\n• Missing selection ovals next to candidates\n• Misspelled candidate names\n• Missing races or candidates\n\nResults will appear here when analysis is complete.';
+            
+            updateAnalyzeButton();
+        }
+
+        function updateStatus(message, type) {
+            const statusEl = document.getElementById('status-indicator');
+            statusEl.textContent = message;
+            statusEl.className = `status-indicator ${type}`;
+        }
+
+        function updateAnalyzeButton() {
+            const btn = document.getElementById('analyze-btn');
+            const hasImage = !!uploadedImageId;
+            const hasValidContestData = document.getElementById('contest-text').value.trim().length > 0;
+            
+            btn.disabled = !(hasImage && hasValidContestData);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>

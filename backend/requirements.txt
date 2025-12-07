@@ -1,0 +1,7 @@
+flask
+werkzeug
+pillow
+python-dotenv
+flask-cors
+uuid
+openai

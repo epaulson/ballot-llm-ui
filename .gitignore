@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+*.venv
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+*.egg
+*.log
+
+# OpenAI session logs (contains sensitive data)
+backend/openai-sessions/
+backend/uploads
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Virtualenv
+.venv/
+venv/
+ENV/
+
+# VS Code
+.vscode/
+
+# JavaScript/Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Coverage reports
+coverage/
+*.cover
+*.py,cover
+.hypothesis/
+
+# HTML build artifacts
+*.html.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+*.swp
+*.swo
+.idea/
