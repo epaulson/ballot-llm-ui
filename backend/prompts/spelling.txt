@@ -1,0 +1,21 @@
+I am proofreading a ballot before it goes to print. I need you to carefully examine the attached ballot image and compare the candidate names shown on the ballot with the official candidate list I'm providing below.
+
+Official Contest and Candidate Data:
+{contest_text}
+
+Please:
+1. Read all candidate names from the ballot image
+2. Compare each name against the official list above
+3. Report any spelling discrepancies, typos, or formatting differences
+4. Note your confidence level for each finding (high/medium/low)
+5. Specify the exact contest and candidate where you found issues
+6. Be very careful about similar names and minor variations
+
+Focus specifically on:
+- Misspelled candidate names
+- Missing or extra letters
+- Wrong capitalization
+- Formatting inconsistencies
+- Names that don't match the official list
+
+The ballot is laid out in three columns, read top to bottom and then left to right. Please be systematic in your comparison.

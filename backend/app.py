@@ -18,9 +18,55 @@ load_dotenv()
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
+# Agent configuration - maps agent names to their prompt files
+AGENT_PROMPTS = {
+    'missing_ovals': 'prompts/missing_ovals.txt',
+    'spelling': 'prompts/spelling.txt'
+}
+
 # OpenAI Session Logging
 OPENAI_SESSIONS_DIR = os.path.join(os.path.dirname(__file__), 'openai-sessions')
 os.makedirs(OPENAI_SESSIONS_DIR, exist_ok=True)
+
+# Prompt loading cache
+_prompt_cache = {}
+
+def load_agent_prompt(agent_name, **kwargs):
+    """
+    Load prompt for a specific agent from file
+    
+    Args:
+        agent_name: The name of the agent ('missing_ovals', 'spelling', etc.)
+        **kwargs: Variables to format into the prompt template
+        
+    Returns:
+        Formatted prompt string
+        
+    Raises:
+        FileNotFoundError: If prompt file doesn't exist
+        KeyError: If agent_name not in AGENT_PROMPTS
+    """
+    if agent_name not in AGENT_PROMPTS:
+        raise KeyError(f"Unknown agent: {agent_name}. Available agents: {list(AGENT_PROMPTS.keys())}")
+    
+    prompt_file = AGENT_PROMPTS[agent_name]
+    
+    # Use cache if available
+    if prompt_file not in _prompt_cache:
+        prompt_path = os.path.join(os.path.dirname(__file__), prompt_file)
+        
+        try:
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                _prompt_cache[prompt_file] = f.read().strip()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
+    
+    # Format prompt with any provided variables
+    prompt_template = _prompt_cache[prompt_file]
+    if kwargs:
+        return prompt_template.format(**kwargs)
+    else:
+        return prompt_template
 
 def log_openai_session(job_id, event_type, data, error=None):
     """
@@ -330,6 +376,8 @@ def analyze_ballot_with_openai(image_path, job_id):
 
 def analyze_ballot_for_missing_ovals(image_path, job_id):
     """Agent 1: Analyze ballot image for missing ovals using OpenAI GPT-4o with vision"""
+    agent_name = 'missing_ovals'
+    
     try:
         # Encode the image
         base64_image = encode_image(image_path)
@@ -337,21 +385,25 @@ def analyze_ballot_for_missing_ovals(image_path, job_id):
         # Log image encoding completion
         log_openai_session(job_id, 'metadata', {
             'action': 'agent_missing_ovals_image_encoded',
-            'base64_length': len(base64_image)
+            'base64_length': len(base64_image),
+            'agent': agent_name
         })
 
-        # Create the visual analysis prompt
-        prompt = """I am trying to proof some drafts of ballots for an upcoming election, before we send them to the printer to create the actual ballots. I am attaching a PNG file of one of the ballots, I would like you to look at it carefully and try to see if there are any mistakes. I am specifically worried that the ovals near each candidate might be missing - sometimes the software drops them. 
-
-The ballot is laid out as three columns, read top to bottom and then left to right. There will be several contests in each column, with the election name starting each election and some instructions on how many to vote for, and then the candidates to vote for, and there should be an oval in front of each candidate. There may also be referendum questions present, which won't have candidates but will have a 'Yes' or a 'No' as an option - and again will have an oval in front of those choices.
-
-Please examine the ballot systematically and report:
-1. Any candidates or choices that appear to be missing their voting ovals
-2. Your confidence level for each finding (high/medium/low)
-3. The specific location where you found the issue (contest name and candidate name)
-4. Any other visual anomalies you notice
-
-Please be thorough but focus primarily on missing ovals as that is our main concern."""
+        # Load the prompt for this agent
+        try:
+            prompt = load_agent_prompt(agent_name)
+            log_openai_session(job_id, 'metadata', {
+                'action': 'prompt_loaded',
+                'agent': agent_name,
+                'prompt_file': AGENT_PROMPTS[agent_name]
+            })
+        except (FileNotFoundError, KeyError) as e:
+            log_openai_session(job_id, 'error', {
+                'action': 'prompt_load_failed',
+                'agent': agent_name,
+                'error': str(e)
+            })
+            raise e
 
         messages = [
             {
@@ -406,7 +458,7 @@ Please be thorough but focus primarily on missing ovals as that is our main conc
         })
         
         return {
-            'agent': 'missing_ovals',
+            'agent': agent_name,
             'raw_analysis': analysis_content,
             'findings': findings,
             'completed_at': datetime.now().isoformat()
@@ -422,6 +474,8 @@ Please be thorough but focus primarily on missing ovals as that is our main conc
 
 def analyze_ballot_for_spelling(image_path, contest_data, job_id):
     """Agent 2: Analyze ballot image for spelling errors in candidate names using OpenAI GPT-4o with vision"""
+    agent_name = 'spelling'
+    
     try:
         # Encode the image
         base64_image = encode_image(image_path)
@@ -429,7 +483,8 @@ def analyze_ballot_for_spelling(image_path, contest_data, job_id):
         # Log image encoding completion
         log_openai_session(job_id, 'metadata', {
             'action': 'agent_spelling_image_encoded',
-            'base64_length': len(base64_image)
+            'base64_length': len(base64_image),
+            'agent': agent_name
         })
 
         # Format contest data for the prompt
@@ -452,28 +507,21 @@ def analyze_ballot_for_spelling(image_path, contest_data, job_id):
                 text_parts.append("")  # Empty line between contests
             contest_text = "\n".join(text_parts)
 
-        # Create the spelling analysis prompt
-        prompt = f"""I am proofreading a ballot before it goes to print. I need you to carefully examine the attached ballot image and compare the candidate names shown on the ballot with the official candidate list I'm providing below.
-
-Official Contest and Candidate Data:
-{contest_text}
-
-Please:
-1. Read all candidate names from the ballot image
-2. Compare each name against the official list above
-3. Report any spelling discrepancies, typos, or formatting differences
-4. Note your confidence level for each finding (high/medium/low)
-5. Specify the exact contest and candidate where you found issues
-6. Be very careful about similar names and minor variations
-
-Focus specifically on:
-- Misspelled candidate names
-- Missing or extra letters
-- Wrong capitalization
-- Formatting inconsistencies
-- Names that don't match the official list
-
-The ballot is laid out in three columns, read top to bottom and then left to right. Please be systematic in your comparison."""
+        # Load the prompt for this agent and format with contest data
+        try:
+            prompt = load_agent_prompt(agent_name, contest_text=contest_text)
+            log_openai_session(job_id, 'metadata', {
+                'action': 'prompt_loaded',
+                'agent': agent_name,
+                'prompt_file': AGENT_PROMPTS[agent_name]
+            })
+        except (FileNotFoundError, KeyError) as e:
+            log_openai_session(job_id, 'error', {
+                'action': 'prompt_load_failed',
+                'agent': agent_name,
+                'error': str(e)
+            })
+            raise e
 
         messages = [
             {
@@ -528,7 +576,7 @@ The ballot is laid out in three columns, read top to bottom and then left to rig
         })
         
         return {
-            'agent': 'spelling',
+            'agent': agent_name,
             'raw_analysis': analysis_content,
             'findings': findings,
             'completed_at': datetime.now().isoformat()

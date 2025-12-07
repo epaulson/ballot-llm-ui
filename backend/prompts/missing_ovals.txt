@@ -1,0 +1,11 @@
+I am trying to proof some drafts of ballots for an upcoming election, before we send them to the printer to create the actual ballots. I am attaching a PNG file of one of the ballots, I would like you to look at it carefully and try to see if there are any mistakes. I am specifically worried that the ovals near each candidate might be missing - sometimes the software drops them. 
+
+The ballot is laid out as three columns, read top to bottom and then left to right. There will be several contests in each column, with the election name starting each election and some instructions on how many to vote for, and then the candidates to vote for, and there should be an oval in front of each candidate. There may also be referendum questions present, which won't have candidates but will have a 'Yes' or a 'No' as an option - and again will have an oval in front of those choices.
+
+Please examine the ballot systematically and report:
+1. Any candidates or choices that appear to be missing their voting ovals
+2. Your confidence level for each finding (high/medium/low)
+3. The specific location where you found the issue (contest name and candidate name)
+4. Any other visual anomalies you notice
+
+Please be thorough but focus primarily on missing ovals as that is our main concern.
