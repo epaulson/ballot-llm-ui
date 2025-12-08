@@ -9,6 +9,7 @@ from PIL import Image
 import json
 import base64
 import threading
+import yaml
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -278,6 +279,200 @@ def parse_contest_text(text):
     
     return {'contests': contests}
 
+def extract_structured_output(analysis_text):
+    """Extract YAML from structured output block"""
+    start_marker = "-- BEGIN STRUCTURED OUTPUT --"
+    end_marker = "-- END STRUCTURED OUTPUT --"
+    
+    start_idx = analysis_text.find(start_marker)
+    if start_idx == -1:
+        return None
+        
+    start_idx += len(start_marker)
+    end_idx = analysis_text.find(end_marker, start_idx)
+    if end_idx == -1:
+        return None
+        
+    yaml_content = analysis_text[start_idx:end_idx].strip()
+    try:
+        return yaml.safe_load(yaml_content)
+    except yaml.YAMLError:
+        return None
+
+def convert_yaml_to_findings(structured_data, agent_name):
+    """Convert YAML structured data to our internal findings format"""
+    if not structured_data or 'findings' not in structured_data:
+        return None
+    
+    yaml_findings = structured_data['findings']
+    summary = structured_data.get('summary', '')
+    analysis_status = structured_data.get('analysis_status', 'completed')
+    
+    # Initialize findings structure
+    findings = {
+        'summary': summary,
+        'total_issues': 0,
+        'confidence_summary': '',
+        'detailed_analysis': '',  # Will be filled by caller
+        'analysis_status': analysis_status,
+        'parsing_method': 'structured_yaml',
+        'sections': {
+            'general_observations': [],
+            'specific_findings': [],
+            'recommendations': []
+        }
+    }
+    
+    # Helper function to filter out dummy entries
+    def filter_real_issues(issues_list):
+        if not isinstance(issues_list, list):
+            return []
+        
+        real_issues = []
+        for issue in issues_list:
+            if not isinstance(issue, dict):
+                continue
+            
+            # Skip entries that are clearly "no issues" placeholders
+            desc = issue.get('description', '').lower()
+            candidate = issue.get('candidate', '').lower()
+            contest = issue.get('contest', '').lower()
+            
+            skip_phrases = ['no missing ovals', 'no other visual anomalies', 'no spelling errors', 'n/a', 'no issues']
+            
+            if any(phrase in desc for phrase in skip_phrases) or candidate in ['n/a', 'none'] or contest in ['n/a', 'none']:
+                continue
+                
+            real_issues.append(issue)
+        
+        return real_issues
+    
+    # Agent-specific processing
+    if agent_name == 'missing_ovals':
+        raw_missing_ovals = yaml_findings.get('missing_ovals', [])
+        raw_other_issues = yaml_findings.get('other_issues', [])
+        
+        findings['missing_ovals'] = filter_real_issues(raw_missing_ovals)
+        findings['other_issues'] = filter_real_issues(raw_other_issues)
+        
+        missing_count = len(findings['missing_ovals'])
+        other_count = len(findings['other_issues'])
+        findings['total_issues'] = missing_count + other_count
+        
+        # Set analysis_status based on findings
+        if missing_count == 0 and other_count == 0:
+            findings['analysis_status'] = 'no_issues_found'
+            findings['confidence_summary'] = 'Analysis completed successfully with no concerns found.'
+        else:
+            high_confidence = sum(1 for oval in findings['missing_ovals'] if oval.get('confidence') == 'high')
+            if high_confidence > 0:
+                findings['confidence_summary'] = f"{high_confidence} high-confidence finding{'s' if high_confidence != 1 else ''}"
+            else:
+                findings['confidence_summary'] = "Mixed confidence levels in findings"
+    
+    elif agent_name == 'spelling':
+        raw_spelling_errors = yaml_findings.get('spelling_errors', [])
+        raw_other_issues = yaml_findings.get('other_issues', [])
+        
+        findings['spelling_errors'] = filter_real_issues(raw_spelling_errors)
+        findings['other_issues'] = filter_real_issues(raw_other_issues)
+        
+        spelling_count = len(findings['spelling_errors'])
+        other_count = len(findings['other_issues'])
+        findings['total_issues'] = spelling_count + other_count
+        
+        # Set analysis_status based on findings
+        if spelling_count == 0 and other_count == 0:
+            findings['analysis_status'] = 'no_issues_found'
+            findings['confidence_summary'] = 'Spelling analysis completed successfully with no concerns found.'
+        else:
+            high_confidence = sum(1 for error in findings['spelling_errors'] if error.get('confidence') == 'high')
+            if high_confidence > 0:
+                findings['confidence_summary'] = f"{high_confidence} high-confidence finding{'s' if high_confidence != 1 else ''}"
+            else:
+                findings['confidence_summary'] = "Mixed confidence levels in findings"
+    
+    return findings
+
+def parse_structured_results(analysis_text, agent_name, job_id):
+    """Parse results with YAML-first, fallback to legacy with improved error handling"""
+    # Try structured YAML first
+    structured_data = extract_structured_output(analysis_text)
+    
+    if structured_data and isinstance(structured_data, dict) and 'findings' in structured_data:
+        log_openai_session(job_id, 'metadata', {
+            'action': 'structured_yaml_parsing_success',
+            'agent': agent_name,
+            'yaml_keys': list(structured_data.keys()) if structured_data else []
+        })
+        
+        # Convert YAML to our internal format
+        try:
+            findings = convert_yaml_to_findings(structured_data, agent_name)
+            if findings:
+                findings['detailed_analysis'] = analysis_text
+                return findings
+        except Exception as e:
+            log_openai_session(job_id, 'metadata', {
+                'action': 'yaml_conversion_failed',
+                'agent': agent_name,
+                'error': f'Failed to convert YAML to findings format: {str(e)}'
+            })
+    else:
+        if structured_data:
+            log_openai_session(job_id, 'metadata', {
+                'action': 'structured_yaml_parsing_partial',
+                'agent': agent_name,
+                'issue': 'Structured data found but missing expected format',
+                'fallback_to_legacy': True
+            })
+        else:
+            log_openai_session(job_id, 'metadata', {
+                'action': 'structured_yaml_parsing_failed',
+                'agent': agent_name,
+                'fallback_to_legacy': True
+            })
+    
+    # Fallback to legacy parsing
+    log_openai_session(job_id, 'metadata', {
+        'action': 'using_legacy_parsing',
+        'agent': agent_name
+    })
+    
+    try:
+        if agent_name == 'missing_ovals':
+            findings = parse_analysis_results(analysis_text)  # existing function
+        else:
+            findings = parse_spelling_results_legacy(analysis_text)  # renamed existing function
+        
+        findings['parsing_method'] = 'legacy_keywords'
+        findings['detailed_analysis'] = analysis_text
+        return findings
+    except Exception as e:
+        log_openai_session(job_id, 'error', {
+            'action': 'legacy_parsing_failed',
+            'agent': agent_name,
+            'error': str(e)
+        })
+        
+        # Return basic findings structure as last resort
+        return {
+            'summary': 'Analysis completed but parsing failed',
+            'total_issues': 0,
+            'confidence_summary': 'Unable to parse results properly',
+            'detailed_analysis': analysis_text,
+            'analysis_status': 'parsing_error',
+            'parsing_method': 'fallback',
+            'missing_ovals': [] if agent_name == 'missing_ovals' else None,
+            'spelling_errors': [] if agent_name == 'spelling' else None,
+            'other_issues': [],
+            'sections': {
+                'general_observations': [],
+                'specific_findings': [],
+                'recommendations': []
+            }
+        }
+
 def encode_image(image_path):
     """Encode image to base64 for OpenAI API"""
     with open(image_path, "rb") as image_file:
@@ -445,15 +640,17 @@ def analyze_ballot_for_missing_ovals(image_path, job_id):
         analysis_content = response.choices[0].message.content
         
         # Parse the response to extract structured findings
-        findings = parse_missing_ovals_results(analysis_content)
+        findings = parse_structured_results(analysis_content, agent_name, job_id)
         
         # Log the parsed findings
         log_openai_session(job_id, 'metadata', {
             'action': 'agent_missing_ovals_parsed',
             'findings_summary': {
-                'missing_ovals_count': len(findings['missing_ovals']),
-                'other_issues_count': len(findings['other_issues']),
-                'total_issues': findings['total_issues']
+                'missing_ovals_count': len(findings.get('missing_ovals', [])),
+                'other_issues_count': len(findings.get('other_issues', [])),
+                'total_issues': findings.get('total_issues', 0),
+                'analysis_status': findings.get('analysis_status', 'completed'),
+                'parsing_method': findings.get('parsing_method', 'unknown')
             }
         })
         
@@ -563,15 +760,17 @@ def analyze_ballot_for_spelling(image_path, contest_data, job_id):
         analysis_content = response.choices[0].message.content
         
         # Parse the response to extract structured findings
-        findings = parse_spelling_results(analysis_content)
+        findings = parse_structured_results(analysis_content, agent_name, job_id)
         
         # Log the parsed findings
         log_openai_session(job_id, 'metadata', {
             'action': 'agent_spelling_parsed',
             'findings_summary': {
-                'spelling_errors_count': len(findings['spelling_errors']),
-                'other_issues_count': len(findings['other_issues']),
-                'total_issues': findings['total_issues']
+                'spelling_errors_count': len(findings.get('spelling_errors', [])),
+                'other_issues_count': len(findings.get('other_issues', [])),
+                'total_issues': findings.get('total_issues', 0),
+                'analysis_status': findings.get('analysis_status', 'completed'),
+                'parsing_method': findings.get('parsing_method', 'unknown')
             }
         })
         
@@ -590,11 +789,7 @@ def analyze_ballot_for_spelling(image_path, contest_data, job_id):
         })
         raise e
 
-def parse_missing_ovals_results(analysis_text):
-    """Parse OpenAI missing ovals analysis results into structured format"""
-    return parse_analysis_results(analysis_text)  # Use existing parser for backward compatibility
-
-def parse_spelling_results(analysis_text):
+def parse_spelling_results_legacy(analysis_text):
     """Parse OpenAI spelling analysis results into structured format"""
     findings = {
         'spelling_errors': [],

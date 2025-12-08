@@ -9,3 +9,27 @@ Please examine the ballot systematically and report:
 4. Any other visual anomalies you notice
 
 Please be thorough but focus primarily on missing ovals as that is our main concern.
+
+Optionally, you may provide your findings in this structured format at the end:
+-- BEGIN STRUCTURED OUTPUT --
+findings:
+  missing_ovals: []
+  other_issues: []
+summary: "No issues detected. All candidates and choices have proper voting ovals."
+analysis_status: "no_issues_found"
+-- END STRUCTURED OUTPUT --
+
+If you do find issues, use this format instead:
+-- BEGIN STRUCTURED OUTPUT --
+findings:
+  missing_ovals:
+    - description: "[specific description of the missing oval]"
+      candidate: "[candidate name]"
+      contest: "[contest name]" 
+      confidence: "high/medium/low"
+  other_issues:
+    - description: "[description of other issue]"
+      type: "[formatting/layout/other]"
+summary: "[brief summary of findings]"
+analysis_status: "completed"
+-- END STRUCTURED OUTPUT --

@@ -19,3 +19,28 @@ Focus specifically on:
 - Names that don't match the official list
 
 The ballot is laid out in three columns, read top to bottom and then left to right. Please be systematic in your comparison.
+
+Optionally, you may provide your findings in this structured format at the end:
+-- BEGIN STRUCTURED OUTPUT --
+findings:
+  spelling_errors: []
+  other_issues: []
+summary: "No spelling errors detected. All candidate names match the official list."
+analysis_status: "no_issues_found"
+-- END STRUCTURED OUTPUT --
+
+If you do find issues, use this format instead:
+-- BEGIN STRUCTURED OUTPUT --
+findings:
+  spelling_errors:
+    - description: "[specific description of the spelling error]"
+      candidate_found: "[name as it appears on ballot]"
+      candidate_expected: "[correct name from official list]"
+      contest: "[contest name]"
+      confidence: "high/medium/low"
+  other_issues:
+    - description: "[description of other issue]"
+      type: "[formatting/layout/other]"
+summary: "[brief summary of findings]"
+analysis_status: "completed"
+-- END STRUCTURED OUTPUT --
