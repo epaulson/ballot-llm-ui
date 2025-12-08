@@ -923,7 +923,12 @@ Justice of the Supreme Court
                     
                     let findingHTML = `<strong>${index + 1}.</strong> ${convertMarkdownToHTML(error.description)}`;
                     
-                    if (error.candidate) {
+                    // Show detailed candidate information if available
+                    if (error.candidate_found && error.candidate_expected) {
+                        findingHTML += `<br><em>Found on ballot: <span style="color: #d73027; font-weight: bold;">"${error.candidate_found}"</span></em>`;
+                        findingHTML += `<br><em>Expected name: <span style="color: #1a9641; font-weight: bold;">"${error.candidate_expected}"</span></em>`;
+                    } else if (error.candidate) {
+                        // Fallback to original candidate field for legacy parsing
                         findingHTML += `<br><em>Candidate: ${error.candidate}</em>`;
                     }
                     
