@@ -378,6 +378,35 @@
             cursor: not-allowed;
         }
 
+        /* Disclaimer Section */
+        .disclaimer-section {
+            margin: 20px auto;
+            max-width: 800px;
+            padding: 15px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        .disclaimer-checkbox {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            cursor: pointer;
+            line-height: 1.4;
+        }
+
+        .disclaimer-checkbox input[type="checkbox"] {
+            margin-top: 2px;
+            cursor: pointer;
+        }
+
+        .disclaimer-text {
+            color: #444;
+            font-size: 14px;
+            user-select: none;
+        }
+
         .reset-btn {
             background: #6c757d;
             color: white;
@@ -495,6 +524,17 @@ Justice of the Supreme Court
                 Reset All
             </button>
         </div>
+
+        <!-- Human Review Disclaimer -->
+        <div class="disclaimer-section">
+            <label class="disclaimer-checkbox">
+                <input type="checkbox" id="human-review-checkbox" onchange="updateAnalyzeButton()">
+                <span class="disclaimer-text">
+                    I understand that AI systems can make mistakes and I agree that humans will also review these ballots. 
+                    This system is not meant to replace any human review activity and only meant to work in addition to all existing human review processes.
+                </span>
+            </label>
+        </div>
     </div>
 
     <script>
@@ -508,8 +548,14 @@ Justice of the Supreme Court
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
+            // CHECKBOX DEFAULT STATE CONFIGURATION
+            // Set to false for production, true for development/testing convenience
+            const HUMAN_REVIEW_CHECKBOX_DEFAULT_CHECKED = false;
+            document.getElementById('human-review-checkbox').checked = HUMAN_REVIEW_CHECKBOX_DEFAULT_CHECKED;
+            
             setupDragAndDrop();
             setupContestValidation();
+            updateAnalyzeButton();
         });
 
         function setupDragAndDrop() {
@@ -1079,8 +1125,9 @@ Justice of the Supreme Court
             const btn = document.getElementById('analyze-btn');
             const hasImage = !!uploadedImageId;
             const hasValidContestData = document.getElementById('contest-text').value.trim().length > 0;
+            const disclaimerAccepted = document.getElementById('human-review-checkbox').checked;
             
-            btn.disabled = !(hasImage && hasValidContestData);
+            btn.disabled = !(hasImage && hasValidContestData && disclaimerAccepted);
         }
 
         function formatFileSize(bytes) {
