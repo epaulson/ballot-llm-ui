@@ -407,6 +407,20 @@
             user-select: none;
         }
 
+        /* Analysis Spinner */
+        .spinner {
+            display: inline-block;
+            font-size: 16px;
+            color: #007cba;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         .reset-btn {
             background: #6c757d;
             color: white;
@@ -496,7 +510,7 @@ Justice of the Supreme Court
 
             <!-- Right Panel: Results -->
             <div class="panel">
-                <h2>Analysis Results</h2>
+                <h2>Analysis Results <span class="spinner" id="analysis-spinner" style="display: none;">⟳</span></h2>
                 <div class="panel-content">
                     <div class="status-indicator ready" id="status-indicator">
                         Ready - Upload image and contest data to begin
@@ -790,6 +804,7 @@ Justice of the Supreme Court
 
             try {
                 updateStatus('Starting analysis...', 'processing');
+                showSpinner();
                 
                 const response = await fetch(`${API_BASE}/analyze-ballot`, {
                     method: 'POST',
@@ -817,6 +832,7 @@ Justice of the Supreme Court
                     throw new Error(error.error || 'Analysis failed');
                 }
             } catch (error) {
+                hideSpinner();
                 updateStatus(`Analysis failed: ${error.message}`, 'error');
             }
         }
@@ -840,6 +856,7 @@ Justice of the Supreme Court
                     // Analysis completed, fetch results
                     await fetchAnalysisResults();
                 } else if (status.status === 'error') {
+                    hideSpinner();
                     updateStatus('Analysis failed', 'error');
                     document.getElementById('results-text').textContent = `Analysis failed: ${status.message}`;
                 } else {
@@ -867,11 +884,13 @@ Justice of the Supreme Court
                 const results = data.results;
                 
                 updateStatus('Multi-agent analysis completed!', 'complete');
+                hideSpinner();
                 
                 // Display formatted results
                 displayAnalysisResults(results);
                 
             } catch (error) {
+                hideSpinner();
                 updateStatus('Failed to fetch results', 'error');
                 console.error('Results fetch error:', error);
             }
@@ -1105,6 +1124,8 @@ Justice of the Supreme Court
             uploadedContestDataId = null;
             analysisJobId = null;
             
+            hideSpinner();
+            
             document.getElementById('contest-text').value = '';
             document.getElementById('validation-status').style.display = 'none';
             clearImage();
@@ -1119,6 +1140,14 @@ Justice of the Supreme Court
             const statusEl = document.getElementById('status-indicator');
             statusEl.textContent = message;
             statusEl.className = `status-indicator ${type}`;
+        }
+
+        function showSpinner() {
+            document.getElementById('analysis-spinner').style.display = 'inline-block';
+        }
+
+        function hideSpinner() {
+            document.getElementById('analysis-spinner').style.display = 'none';
         }
 
         function updateAnalyzeButton() {
